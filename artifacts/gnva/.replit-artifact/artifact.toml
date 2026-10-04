@@ -1,0 +1,20 @@
+kind = "web"
+previewPath = "/"
+title = "GNVA — Gestion Numérique de Validation des Autocollants"
+description = "Plateforme métier Next.js, Prisma et MySQL pour les autocollants QR et la supervision."
+version = "1.0.0"
+id = "artifacts/gnva"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/", "/api/v1", "/_next/hmr" ]
+localPort = 19045
+[services.development]
+run = "pnpm --filter @workspace/gnva run dev"
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/gnva", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/gnva", "run", "serve" ]
+[services.env]
+PORT = "19045"
+BASE_PATH = "/"

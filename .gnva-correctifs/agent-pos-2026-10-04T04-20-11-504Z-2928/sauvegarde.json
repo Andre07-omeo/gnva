@@ -1,0 +1,30 @@
+{
+  "format": "GNVA-agent-pos-1",
+  "fichiers": [
+    {
+      "path": "artifacts/gnva/src/components/assujettis.tsx",
+      "beforeSha": "11b7aa01a934b1b25f1e18a2da9f08be94e77f15d66508a5165ea9354c1dacde",
+      "afterSha": "8799126f50623a104ed8a62c0bf622954d4cef19df1e2ce48a4521a59f02f111"
+    },
+    {
+      "path": "artifacts/gnva/src/server/lecture.ts",
+      "beforeSha": "ebb8eae3f3106a56b72e5b268ddb529e15f3ed166fabd76b396c55c2f0dca793",
+      "afterSha": "59f7a492ca6be232039ef12c1d0b46cd0ea31b2845079c1219f4c3c843d171f7"
+    },
+    {
+      "path": "artifacts/gnva/src/server/assujettis.ts",
+      "beforeSha": "dcad641e469912f4287d02e89606c7e9c9238b2292fc5fa4a9b7e308a1789b1a",
+      "afterSha": "d85736f693be667a4ffab05cba72c2a573210a7d81528b484f522bf49cdebbf1"
+    },
+    {
+      "path": "artifacts/gnva/src/server/impression.ts",
+      "beforeSha": "49e8039428ad022acdd9111b028d9c27ed5bc5b2a911bef87b4ea18a1e2fe34f",
+      "afterSha": "ae1471884ecee7b5ceaf1488caa47dec5d5ab95ff3c41d0f1cc228373bd9fa4e"
+    },
+    {
+      "path": "artifacts/gnva/src/server/ticket-pos.ts",
+      "beforeSha": null,
+      "afterSha": "9e0dc7e321e540fdf563b0872418eb2fb3cf3f59a7a93ecea91a91b2962a376f"
+    }
+  ]
+}

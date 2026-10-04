@@ -1,0 +1,358 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 1.0.0
+  description: API GNVA, autorisations territoriales et opérations transactionnelles
+servers:
+  - url: /api
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      responses:
+        "200":
+          description: État
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+  /v1/auth/session:
+    get:
+      operationId: obtenirSession
+      responses:
+        "200":
+          description: Session courante
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCourante" }
+  /v1/auth/connexion:
+    post:
+      operationId: connecter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Identifiants" }
+      responses:
+        "200":
+          description: Connecté
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCourante" }
+  /v1/auth/deconnexion:
+    post:
+      operationId: deconnecter
+      responses:
+        "200":
+          description: Déconnecté
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resultat" }
+  /v1/auth/mot-de-passe:
+    post:
+      operationId: changerMotDePasse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangementMotDePasse" }
+      responses:
+        "200":
+          description: Modifié
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resultat" }
+  /v1/tableau-de-bord:
+    get:
+      operationId: obtenirTableauDeBord
+      parameters:
+        - { name: debut, in: query, schema: { type: string } }
+        - { name: fin, in: query, schema: { type: string } }
+        - { name: siteId, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Indicateurs réels
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TableauDeBord" }
+  /v1/references:
+    get:
+      operationId: obtenirReferences
+      responses:
+        "200":
+          description: Référentiels limités au périmètre
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/References" }
+  /v1/{ressource}:
+    parameters:
+      - name: ressource
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [geographies, sites, utilisateurs, roles, assujettis, autocollants, types-moto, tarifs, recouvrements, transactions, audit, notifications, parametres, vols]
+    get:
+      operationId: listerRessource
+      parameters:
+        - { name: recherche, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limite, in: query, schema: { type: integer, default: 25 } }
+        - { name: statut, in: query, schema: { type: string } }
+        - { name: siteId, in: query, schema: { type: string } }
+        - { name: geographieId, in: query, schema: { type: string } }
+        - { name: debut, in: query, schema: { type: string } }
+        - { name: fin, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Page paginée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageDonnees" }
+    post:
+      operationId: creerRessource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Donnees" }
+      responses:
+        "201":
+          description: Créé
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Donnees" }
+  /v1/{ressource}/{id}:
+    parameters:
+      - { name: ressource, in: path, required: true, schema: { type: string } }
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: obtenirRessource
+      responses:
+        "200":
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Donnees" }
+    patch:
+      operationId: modifierRessource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Donnees" }
+      responses:
+        "200":
+          description: Modifié
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Donnees" }
+    delete:
+      operationId: supprimerRessource
+      responses:
+        "200":
+          description: Archivé si autorisé
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resultat" }
+  /v1/attributions:
+    post:
+      operationId: attribuerAutocollant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AttributionInput" }
+      responses:
+        "201":
+          description: Attribution atomique
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Donnees" }
+  /v1/generation-qr:
+    post:
+      operationId: genererAutocollants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerationInput" }
+      responses:
+        "201":
+          description: Série créée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resultat" }
+  /v1/recouvrements/responsables/{siteId}:
+    get:
+      operationId: obtenirResponsablesRecouvrement
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Moniteurs du périmètre le plus proche et responsables du site
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Donnees" }
+  /v1/recouvrements/{id}/validation:
+    post:
+      operationId: validerRecouvrement
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransitionInput" }
+      responses:
+        "200":
+          description: Validation enregistrée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Donnees" }
+  /v1/doublons:
+    post:
+      operationId: rechercherDoublons
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Donnees" }
+      responses:
+        "200":
+          description: Correspondances
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Donnees" }
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties: { status: { type: string } }
+    Donnees:
+      type: object
+      additionalProperties: true
+    Resultat:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        nombre: { type: integer }
+    Identifiants:
+      type: object
+      required: [email, motDePasse]
+      properties:
+        email: { type: string, format: email }
+        motDePasse: { type: string }
+    ChangementMotDePasse:
+      type: object
+      required: [actuel, nouveau]
+      properties:
+        actuel: { type: string }
+        nouveau: { type: string, minLength: 12 }
+    UtilisateurPublic:
+      type: object
+      required: [id, nom, email, role, permissions, changementRequis, actif]
+      properties:
+        id: { type: string }
+        nom: { type: string }
+        email: { type: string }
+        role: { type: string }
+        roleCode: { type: string }
+        permissions: { type: array, items: { type: string } }
+        siteId: { type: ["string", "null"] }
+        siteNom: { type: ["string", "null"] }
+        changementRequis: { type: boolean }
+        actif: { type: boolean }
+    SessionCourante:
+      type: object
+      required: [utilisateur]
+      properties:
+        utilisateur:
+          anyOf:
+            - { $ref: "#/components/schemas/UtilisateurPublic" }
+            - { type: "null" }
+    PageDonnees:
+      type: object
+      required: [elements, total, page, limite]
+      properties:
+        elements:
+          type: array
+          items: { $ref: "#/components/schemas/Donnees" }
+        total: { type: integer }
+        page: { type: integer }
+        limite: { type: integer }
+    References:
+      type: object
+      required: [geographies, sites, typesMoto, roles, permissions, exercice, identite]
+      properties:
+        geographies: { type: array, items: { $ref: "#/components/schemas/Donnees" } }
+        sites: { type: array, items: { $ref: "#/components/schemas/Donnees" } }
+        typesMoto: { type: array, items: { $ref: "#/components/schemas/Donnees" } }
+        roles: { type: array, items: { $ref: "#/components/schemas/Donnees" } }
+        permissions: { type: array, items: { type: string } }
+        exercice: { type: integer }
+        identite:
+          type: object
+          properties:
+            nomPlateforme: { type: string }
+            logoUrl: { type: string }
+            couleurPrimaire: { type: string }
+    TableauDeBord:
+      type: object
+      required: [assujettis, attribues, disponibles, timbres, recettes, recouvrements, sitesActifs, sitesSuspendus, utilisateursActifs, parSite, partDispromalt, partProvince, restant, jour, bilanGeneral]
+      properties:
+        assujettis: { type: integer }
+        attribues: { type: integer }
+        disponibles: { type: integer }
+        timbres: { type: integer }
+        recettes: { type: string }
+        recouvrements: { type: string }
+        sitesActifs: { type: integer }
+        sitesSuspendus: { type: integer }
+        utilisateursActifs: { type: integer }
+        partDispromalt: { type: string }
+        partProvince: { type: string }
+        restant: { type: string }
+        jour: { type: string }
+        parSite: { type: array, items: { $ref: "#/components/schemas/Donnees" } }
+        bilanGeneral: { $ref: "#/components/schemas/BilanGeneral" }
+    BilanGeneral:
+      type: object
+      required: [assujettisAttribues, gainGeneral, gainDispromalt, gainProvince, recouvreDispromalt, reserveDispromalt, resteDispromalt, disponibleDispromalt]
+      properties:
+        assujettisAttribues: { type: integer }
+        gainGeneral: { type: string }
+        gainDispromalt: { type: string }
+        gainProvince: { type: string }
+        recouvreDispromalt: { type: string }
+        reserveDispromalt: { type: string }
+        resteDispromalt: { type: string }
+        disponibleDispromalt: { type: string }
+    AttributionInput:
+      type: object
+      required: [assujettiId, numeroAutocollant, numeroTimbre]
+      properties:
+        assujettiId: { type: string }
+        numeroAutocollant: { type: string }
+        numeroTimbre: { type: string }
+    GenerationInput:
+      type: object
+      required: [serie, prefixe, geographieId, debut, fin, longueur]
+      properties:
+        serie: { type: string }
+        prefixe: { type: string }
+        geographieId: { type: string }
+        siteId: { type: string }
+        debut: { type: integer, minimum: 0 }
+        fin: { type: integer, minimum: 0 }
+        longueur: { type: integer, minimum: 1, maximum: 20 }
+        typeAutocollant: { type: string, enum: [AUTOCOLLANT_2R, AUTOCOLLANT_3R] }
+    TransitionInput:
+      type: object
+      required: [statut]
+      properties:
+        statut: { type: string }
+        commentaire: { type: string }

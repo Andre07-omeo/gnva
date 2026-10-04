@@ -1,0 +1,8 @@
+GNVA — Sources, base vide et guide d'utilisation
+
+Guide Word : DOCUMENTATION/GUIDE_COMPLET_UTILISATION_GNVA.docx
+Base vide : BASE_DE_DONNEES/GNVA_SCHEMA_VIDE.sql
+Import : lire BASE_DE_DONNEES/LIRE_AVANT_IMPORT.md AVANT toute opération
+Compilation : COMPILATION.md
+La base vide ne contient pas vos données. Le seed crée les comptes initiaux.
+Aucun secret ni photo enregistrée n'est inclus. Production non validée.

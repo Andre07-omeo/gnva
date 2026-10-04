@@ -1,0 +1,10 @@
+{
+  "format": "GNVA-CORRECTIF-SAUVEGARDE-1",
+  "fichiers": [
+    {
+      "path": "artifacts/gnva/scripts/demarrer.mjs",
+      "beforeSha": "f2d21cff9675f847b5a8d41084628a83b951025b49bc5648ba02d58eb7d92aea",
+      "afterSha": "6dc67fc25a9425d57bfee1a5b1206f61c54aeb143122df61d9d440aa2da6ee1c"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: gnva
+      MYSQL_USER: gnva
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Définissez MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Définissez MYSQL_ROOT_PASSWORD}
+    volumes: [mysql:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis:/data]
+  initialisation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: sh -c 'pnpm --filter @workspace/gnva run db:migrate && pnpm --filter @workspace/gnva run db:seed'
+    environment:
+      MYSQL_DATABASE_URL: mysql://gnva:${MYSQL_PASSWORD}@mysql:3306/gnva
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-1234}
+    depends_on:
+      mysql: {condition: service_healthy}
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    restart: unless-stopped
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      MYSQL_DATABASE_URL: mysql://gnva:${MYSQL_PASSWORD}@mysql:3306/gnva
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:?Définissez SESSION_SECRET}
+      APP_URL: ${APP_URL:?Définissez l’URL HTTPS publique}
+      STORAGE_MODE: ${STORAGE_MODE:-local}
+      UPLOAD_DIR: /app/artifacts/gnva/public/uploads/assujettis
+      WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:-}
+      WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:-}
+      WEB_PUSH_CONTACT: ${WEB_PUSH_CONTACT:-mailto:admin@gnva.cd}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes: [photos:/app/artifacts/gnva/public/uploads/assujettis]
+    depends_on:
+      initialisation: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+  notifications:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: pnpm --filter @workspace/gnva exec tsx scripts/notifications.ts
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE_URL: mysql://gnva:${MYSQL_PASSWORD}@mysql:3306/gnva
+      WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:-}
+      WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:-}
+      WEB_PUSH_CONTACT: ${WEB_PUSH_CONTACT:-mailto:admin@gnva.cd}
+    depends_on:
+      initialisation: {condition: service_completed_successfully}
+volumes:
+  mysql:
+  redis:
+  photos:

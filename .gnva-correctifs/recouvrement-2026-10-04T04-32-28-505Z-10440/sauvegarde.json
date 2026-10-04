@@ -1,0 +1,80 @@
+{
+  "format": "GNVA-recouvrement-1",
+  "fichiers": [
+    {
+      "path": "artifacts/gnva/src/server/lecture.ts",
+      "beforeSha": "59f7a492ca6be232039ef12c1d0b46cd0ea31b2845079c1219f4c3c843d171f7",
+      "afterSha": "51dcdb805da3178c282f695c6bd7628e8ca29f607599c711955cba714e22e853"
+    },
+    {
+      "path": "artifacts/gnva/src/server/impression.ts",
+      "beforeSha": "ae1471884ecee7b5ceaf1488caa47dec5d5ab95ff3c41d0f1cc228373bd9fa4e",
+      "afterSha": "2d3d0751fffdc4f02c39203d7388f018843e27e48ba87d1d6040d722eb4a74a7"
+    },
+    {
+      "path": "artifacts/gnva/src/server/finances.ts",
+      "beforeSha": "99ff51cffe3a59537b2dd162cad21dbddfbc665c176ce32e0b55f4e78cd04cd7",
+      "afterSha": "4f67d47ff4fad7c8097a343c7281388a9f26aecfd2bf7039fe70208e293ffb23"
+    },
+    {
+      "path": "artifacts/gnva/src/server/rapports.ts",
+      "beforeSha": "081c52899d0747c82094e278223a9724518dd151e8adda324347ea4e4dd0bc7f",
+      "afterSha": "7424a374f1489a75ce63bf4d8c42b92b2d8ec4bdf67317216656d42da1070ae4"
+    },
+    {
+      "path": "artifacts/gnva/src/server/soldes.ts",
+      "beforeSha": null,
+      "afterSha": "630e45c299cc75b4befb7d7c8f82b61f0099c1a09f4c64b86fb8962a1e0476b8"
+    },
+    {
+      "path": "artifacts/gnva/src/server/contexte.ts",
+      "beforeSha": "82652271cfc312404784020f942133c6e9cd2934ff850616e8eabab854b1c93c",
+      "afterSha": "222380fa9a96157874f8ea62f1bf327e16eec2993414675325fdadf6e0bb6317"
+    },
+    {
+      "path": "artifacts/gnva/src/server/permissions.ts",
+      "beforeSha": "0c0291bf754c482caa2efe0879beae87a01918b6a57ea766cd63ef2da191432b",
+      "afterSha": "5d50107d3aab7250074ea3bc72e0e705293305091fcc630787562ef944ce27cb"
+    },
+    {
+      "path": "artifacts/gnva/src/server/rapport-imprimable.ts",
+      "beforeSha": "c8d4343252200ee255aaba5ea85ea56075098e4200b4ce3fed577713b779b9f5",
+      "afterSha": "a7da764eb8c074752a033b5989abb57d16801c3cf48061a8626b1186d8ecb72d"
+    },
+    {
+      "path": "artifacts/gnva/src/components/dashboard.tsx",
+      "beforeSha": "a0faf1bafbdb0c61ee6879f8215264e3c27c4079e05aabfb0bff393d1f0a633f",
+      "afterSha": "9a13a21f822f6fc948880ab6a1043907160f77880b1f31de22caf1339fd73dc7"
+    },
+    {
+      "path": "artifacts/gnva/src/components/operations.tsx",
+      "beforeSha": "5820d80601f25ae2693adecdb27fd55eea95cd980b3c4e1196e14e17e839741e",
+      "afterSha": "01dd2a8c49f653673b3fda85e7a9e4cfe2d818d12a9d9deec4d25d4d423e9f9d"
+    },
+    {
+      "path": "artifacts/gnva/src/components/recouvrement-form.tsx",
+      "beforeSha": "254e32634d11f96738214f16f9f95f458c7eec9148517f022657c3ef0fd1972f",
+      "afterSha": "e16f4eb096cedb1abe24bc70dbed47bfed93ba3d1463447ce70b18c2d14086d8"
+    },
+    {
+      "path": "artifacts/gnva/src/components/resource-page.tsx",
+      "beforeSha": "02a106a46c53f8021c1bd6ae6c1b75774554ae5c20f8ff1e235d72d74db0a855",
+      "afterSha": "72a68102e0a9bc20de2700703a59821286db864a737bff2d36b97e1bebc5c2e7"
+    },
+    {
+      "path": "lib/api-spec/openapi.yaml",
+      "beforeSha": "629caa4a955d72f25f08790d2529fab11f76048eda3a53f74471375ec674ec25",
+      "afterSha": "2fa5f035f7adcf4253b2f8f249e0d4f877c64260add2bf350a159a2083c4c2f7"
+    },
+    {
+      "path": "lib/api-client-react/src/generated/api.schemas.ts",
+      "beforeSha": "ccfc72b4d1fb78d7fb4d7e6c665bc11c077cece93470babf191e1f7a380e08d3",
+      "afterSha": "32db82834511ffc98d41103f7c2ae9226a198de4d0a487a0a65ead41f573faf2"
+    },
+    {
+      "path": "lib/api-zod/src/generated/api.ts",
+      "beforeSha": "3ed0a91108ed2766634dccd9a4e1cd7d65e2d11c66922e8d6da2d3fd3106838a",
+      "afterSha": "698f2a25c0692d2f0154ea2b2c682b499fdd20b4ec3d504995335756f63368d6"
+    }
+  ]
+}

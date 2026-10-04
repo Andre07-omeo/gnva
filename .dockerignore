@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/.next
+.git
+.local
+.cache
+.agents
+.env
+.env.*
+!.env.example
+**/public/uploads
+attached_assets
+screenshots
+**/dist
