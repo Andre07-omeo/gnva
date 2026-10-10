@@ -62,7 +62,7 @@ export function Verification() {
             </div>
             <dl className="kv">{flat.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/v1/qr/${encodeURIComponent(String(res.numeroQR ?? res.numero ?? num))}`} alt="Code QR" width={140} height={140} style={{ marginTop: 12 }} />
+            <img src={`/api/v1/qr/${encodeURIComponent(String(res.autocollantId ?? res.numeroAutocollant ?? res.numeroQR ?? res.numero ?? num))}`} alt="Code QR" width={140} height={140} style={{ marginTop: 12 }} />
           </div>
         )}
         {!res && !error && !busy && <p style={{ color: "var(--muted)", marginBottom: 0 }}>Saisissez un numéro ou scannez un autocollant pour afficher son état public.</p>}

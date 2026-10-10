@@ -544,8 +544,7 @@ test("GNVA : MySQL isolé, contrats et invariants métier", async (t) => {
     await t.test(
       "QR public : liste blanche, aucune donnée financière ou de compte",
       async () => {
-        const qr = await db.autocollant.findUniqueOrThrow({
-          where: { numero: "TEST-001" },
+        const qr = await db.autocollant.findFirstOrThrow({ where: { numero: "TEST-001", lot: { is: { serie: "TEST_SERIE" } } },
         });
         const publicR = await publicAutocollant(qr.jeton);
         assert.equal(publicR.nom, a1.nom);
@@ -878,8 +877,7 @@ test("GNVA : MySQL isolé, contrats et invariants métier", async (t) => {
         await generer(admin, { ...lot, geographieId: district.id });
         assert.equal(
           (
-            await db.autocollant.findUniqueOrThrow({
-              where: { numero: "KIN_TEST-001" },
+            await db.autocollant.findFirstOrThrow({ where: { numero: "KIN_TEST-001", lot: { is: { serie: "KIN_TEST" } } },
             })
           ).geographieId,
           district.id,

@@ -152,7 +152,9 @@ export async function traiter(requete: NextRequest, segments: string[]) {
       return json(await responsablesRecouvrement(ctx, action));
     if (get && module === "notifications-stream") return fluxNotifications(ctx);
     if (get && module === "tableau-de-bord")
-      return json(await tableauDeBord(ctx, q));
+      return json(
+        await tableauDeBord(ctx, q, { moniteurNationalToutPays: true }),
+      );
     if (get && module === "positions") return json(await positions(ctx));
     if (post && module === "position")
       return json(await partagerPosition(ctx, await req.json()));

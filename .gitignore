@@ -1,55 +1,63 @@
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+﻿# Dépendances
+node_modules/
+.pnpm-store/
 
-# compiled output
-dist
-tmp
-out-tsc
-*.tsbuildinfo
-.expo
-.expo-shared
+# Build
+.next/
+out/
+dist/
+build/
 
-# dependencies
-node_modules
+# Environnement (NE JAMAIS COMMITTER)
+.env
+.env.local
+.env.production
+.env.*.local
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# Cache
+.cache/
+.turbo/
 
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-
-# System Files
+# OS
 .DS_Store
 Thumbs.db
 
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
+# IDE
+.vscode/
+.idea/
+*.swp
 
-# Replit
-.cache/
-.local/
-.next/
-.next-recette-*/
-.env
-.env.*
-!.env.example
-artifacts/gnva/public/uploads/
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Uploads utilisateurs (peut contenir des données sensibles)
+public/uploads/
+uploads/
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*~
+
+# Sauvegardes GNVA
+.gnva-sauvegardes/
+
+# Backups
+*.backup
+*.bak
+
+# Fichiers de build TypeScript
+*.tsbuildinfo
+
+# Dumps SQL
+*.sql
+gnva.sql
+
+# Sauvegardes Docker
+docker-compose.yml.backup

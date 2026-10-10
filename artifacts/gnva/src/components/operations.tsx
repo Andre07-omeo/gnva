@@ -64,11 +64,13 @@ export function Recouvrements() {
     <>
       <ResourcePage ressource="recouvrements" noun="recouvrement" title="Recouvrements" sub="Recouvrement de la part Dispromalt uniquement. Historique conservé et reçu après double validation."
         readOnly={me.roleCode !== "MONITEUR_NATIONAL"} refetchInterval={10000} onRows={suivre}
-        statuts={["EN_ATTENTE", "SIGNE_MONITEUR", "VALIDE", "REJETE"]} canEdit={false} createPerm={["RECOUVREMENT_CREER"]} extraActions={step}
+        statuts={["EN_ATTENTE", "SIGNE_MONITEUR", "VALIDE", "REJETE"]} canEdit={false} filtreProvince createPerm={["RECOUVREMENT_CREER"]} extraActions={step}
         extraParams={typeof window !== "undefined" ? Object.fromEntries(new URLSearchParams(window.location.search)) : {}}
         renderForm={({ refs, onClose }) => <RecouvrementForm refs={refs} onClose={onClose} />}
         titleOf={(r) => String(r.reference ?? r.id)}
-        columns={[{ key: "reference", label: "Référence" }, { key: "site", label: "Site" }, { key: "montant", label: "Montant", render: (r) => fmtMoney(r.montant) },
+        columns={[{ key: "reference", label: "Référence" }, { key: "site", label: "Site", render: (r) => String(r.site?.nom ?? "—") },
+          { key: "zone", label: "Zone géographique", render: (r) => String(r.site?.geographie?.nom ?? "—") },
+          { key: "montant", label: "Montant", render: (r) => fmtMoney(r.montant) },
           { key: "partDispromalt", label: "Recouvré Dispromalt", render: (r) => fmtMoney(r.partDispromalt) }, { key: "partProvince", label: "Province (historique)", render: (r) => fmtMoney(r.partProvince) },
           { key: "validations", label: "Validations", render: (r) => `${nb(r)} / 2` }, { key: "statut", label: "Statut", render: (r) => <Badge>{String(r.statut)}</Badge> }]}
         setup="Seul le moniteur national crée une demande. Les deux moniteurs retrouvent ici son historique et son reçu." />
@@ -86,7 +88,7 @@ export function GenererModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const refs = useObtenirReferences();
-  const [v, setV] = useState<Row>({ serie: "", prefixe: "", geographieId: "", debut: "1", fin: "", longueur: "6", typeAutocollant: "AUTOCOLLANT_2R" });
+  const [v, setV] = useState<Row>({ serie: "", prefixe: "", geographieId: "", debut: "1", fin: "", longueur: "4", typeAutocollant: "AUTOCOLLANT_2R" });
   const [error, setError] = useState("");
   const [final, setFinal] = useState<Row | null>(null);
   const derniereSaisie = useRef<Row | null>(null);
@@ -100,8 +102,9 @@ export function GenererModal({ onClose }: { onClose: () => void }) {
     },
   });
   const m = useGenererAutocollants({ mutation: { onSuccess: (r) => {
-    toast.ok(r.message ?? "Autocollants générés");
-    setFinal({ ...(derniereSaisie.current ?? {}), nombre: r.nombre ?? 0 });
+    const resultat = r as unknown as Row;
+    toast.ok(resultat.message ?? "Autocollants générés");
+    setFinal({ ...(derniereSaisie.current ?? {}), nombre: resultat.nombre ?? 0, autocollants: resultat.autocollants });
     invalidateData(qc);
   }, onError: (e) => setError(errMsg(e)) } });
   const go = () => {
@@ -128,18 +131,21 @@ export function GenererModal({ onClose }: { onClose: () => void }) {
       const protege = /^[=+\-@\t\r]/.test(texte) ? `'${texte}` : texte;
       return `"${protege.replaceAll('"', '""')}"`;
     };
+    const autocollants = Array.isArray(final.autocollants) ? final.autocollants as Row[] : [];
+    if (autocollants.length !== Number(final.nombre)) {
+      setError("La liste des URL QR n’est pas complète. Ne réimportez pas cette série; relancez son export depuis la liste des autocollants.");
+      return;
+    }
     const lignes = [
-      ["numero", "serie", "numeroAffiche", "zone", "typeAutocollant"],
-      ...Array.from({ length: Number(final.fin) - Number(final.debut) + 1 }, (_, i) => {
-        const numero = `${String(final.prefixe)}-${String(Number(final.debut) + i).padStart(Number(final.longueur), "0")}`;
-        return [
-          numero,
-          final.serie,
-          afficherNumeroAutocollant(numero, final.serie),
-          final.zoneNom,
-          final.typeAutocollant,
-        ];
-      }),
+      ["numero", "serie", "numeroAffiche", "urlPublique", "zone", "typeAutocollant"],
+      ...autocollants.map((autocollant) => [
+        autocollant.numero,
+        final.serie,
+        afficherNumeroAutocollant(autocollant.numero, final.serie),
+        autocollant.urlPublique,
+        final.zoneNom,
+        final.typeAutocollant,
+      ]),
     ];
     const csv = `\uFEFF${lignes.map((ligne) => ligne.map(cellule).join(";")).join("\r\n")}`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -158,6 +164,8 @@ export function GenererModal({ onClose }: { onClose: () => void }) {
       <Btn onClick={onClose}>Annuler</Btn><Btn kind="save" disabled={m.isPending} onClick={go}><Layers size={14} />{m.isPending ? "Génération..." : "Générer"}</Btn>
     </>}>
       {final ? (
+        <>
+        {error && <div className="errbox" role="alert">{error}</div>}
         <div className="card pad" role="status">
           <h3>Génération terminée</h3>
           <p>{String(final.nombre)} autocollant(s) sont déjà enregistrés en base. Il n&apos;est pas nécessaire de les réimporter.</p>
@@ -167,10 +175,11 @@ export function GenererModal({ onClose }: { onClose: () => void }) {
           )}</b></p>
           <p style={{ marginBottom: 0 }}>Le bouton ci-dessous télécharge une copie CSV de cette série enregistrée.</p>
         </div>
+        </>
       ) : <>
         {error && <div className="errbox" style={{ marginBottom: 12 }} role="alert">{error}</div>}
         <div className="fgrid">
-          <Field label="Série *"><input className="input" value={v.serie} onChange={(e) => set("serie", e.target.value)} /></Field>
+          <Field label="Série *" hint="La série complète distingue les autocollants portant le même numéro."><input className="input" value={v.serie} onChange={(e) => set("serie", e.target.value)} /></Field>
           <Field label="Préfixe *"><input className="input" value={v.prefixe} onChange={(e) => set("prefixe", e.target.value)} /></Field>
           <ZoneLot zones={(refs.data?.geographies ?? []) as Row[]} onChange={id => set("geographieId", id)} />
           <div className="card pad full" role="status" style={{ marginBottom: 12 }}>
@@ -184,7 +193,7 @@ export function GenererModal({ onClose }: { onClose: () => void }) {
           </div>
           <Field label="Premier numéro *"><input className="input" type="number" min={0} value={v.debut} onChange={(e) => set("debut", e.target.value)} /></Field>
           <Field label="Dernier numéro *"><input className="input" type="number" min={0} value={v.fin} onChange={(e) => set("fin", e.target.value)} /></Field>
-          <Field label="Longueur du numéro *" hint="Nombre de chiffres avec zéros de remplissage."><input className="input" type="number" min={1} max={20} value={v.longueur} onChange={(e) => set("longueur", e.target.value)} /></Field>
+          <Field label="Longueur du numéro *" hint="4 chiffres par défaut; les zéros à gauche sont conservés."><input className="input" type="number" min={1} max={20} value={v.longueur} onChange={(e) => set("longueur", e.target.value)} /></Field>
           <Field label="Type d’autocollant"><select className="input" value={v.typeAutocollant} onChange={(e) => set("typeAutocollant", e.target.value)}><option value="AUTOCOLLANT_2R">Autocollant 2 roues</option><option value="AUTOCOLLANT_3R">Autocollant 3 roues</option></select></Field>
         </div>
       </>}
@@ -252,11 +261,15 @@ export function Autocollants() {
         {canCreate && <Btn onClick={() => setImp(true)}><Upload size={15} />Importer CSV</Btn>}
         {canCreate && <Btn kind="primary" onClick={() => setGen(true)}><Layers size={15} />Générer une série</Btn>}
       </PageHead>
-      <ResourcePage embedded readOnly ressource="autocollants" noun="autocollant" title="Autocollants" statuts={["DISPONIBLE", "ATTRIBUE"]}
+      <ResourcePage embedded readOnly ressource="autocollants" noun="autocollant" title="Autocollants" filtreProvince statuts={["DISPONIBLE", "ATTRIBUE"]}
         titleOf={(r) => numeroAvecSerie(r)}
         columns={[
-          { key: "qr", label: "QR", render: (r) => numOf(r) ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`/api/v1/qr/${encodeURIComponent(String(numOf(r)))}`} alt={`QR ${numeroAvecSerie(r)}`} width={48} height={48} loading="lazy" /> : "—" },
+          { key: "qr", label: "QR", render: (r) => numOf(r) ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`/api/v1/qr/${encodeURIComponent(String(r.id))}`} alt={`QR ${numeroAvecSerie(r)}`} width={48} height={48} loading="lazy" /> : "—" },
           { key: "numeroAffiche", label: "Autocollant / Série", render: (r) => numeroAvecSerie(r) },
+          { key: "zoneGeographique", label: "Zone géographique", render: (r) => String(r.zoneGeographique?.nom ?? "—") },
+          { key: "urlPublique", label: "URL du QR", render: (r) => r.jeton
+            ? <a href={String(r.urlPublique ?? `/autocollant/${r.jeton}`)} target="_blank" rel="noreferrer">Visualiser / scanner</a>
+            : "—" },
           { key: "site", label: "Site d'origine", render: (r) => String(r.site?.nom ?? "—") },
           { key: "typeAutocollant", label: "Type" },
           { key: "statut", label: "Statut" },
@@ -266,7 +279,7 @@ export function Autocollants() {
             { key: "siteAttribution", label: "Site d'attribution", render: (r: Row) => String(r.attribution?.transaction?.site?.nom ?? "—") },
           ]),
         ]}
-        extraActions={(r) => <>{numOf(r) && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/qr/${encodeURIComponent(String(numOf(r)))}`}><QrCode size={13} />QR</a>}{printLink("autocollant", r.id)}</>}
+        extraActions={(r) => <>{numOf(r) && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/qr/${encodeURIComponent(String(r.id))}`}><QrCode size={13} />QR</a>}{printLink("autocollant", r.id)}</>}
         setup="Utilisez « Générer une série » ou « Importer CSV ». Sélectionnez la province, ou un district pour Kinshasa." fields={[]} />
       {gen && <GenererModal onClose={() => setGen(false)} />}
       {imp && <ImportModal onClose={() => setImp(false)} />}

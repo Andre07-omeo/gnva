@@ -2,11 +2,13 @@
 import { useState } from "react";
 import { ResourcePage, refOpts } from "@/components/resource-page";
 import { useQueryClient } from "@tanstack/react-query";
-import { useModifierRessource } from "@workspace/api-client-react";
+import { useModifierRessource, useObtenirReferences } from "@workspace/api-client-react";
 import { PageHead, Badge, Btn, useToast } from "@/components/ui";
+import { useUser } from "@/components/shell";
 import { PushControl } from "@/components/push";
 import { invalidateData } from "@/lib/utils";
 import { fmtMoney } from "@/lib/utils";
+import type { Row } from "@/lib/utils";
 import { zonesDuRole } from "@/lib/territoire";
 
 export function Geographies() {
@@ -37,19 +39,22 @@ export function Sites() {
         { name: "adresse", label: "Adresse" },
         { name: "actif", label: "Actif (décocher pour suspendre)", type: "checkbox" },
       ]}
-      createPerm={["SITE_GERER"]} editPerm={["SITE_GERER"]} suspendPerm={["SITE_GERER"]}
+      createPerm={["SITE_GERER"]} editPerm={["SITE_GERER"]} suspendPerm={["SITE_GERER"]} filtreProvince
       setup="Créez d'abord au moins une géographie, puis ajoutez les sites." />
   );
 }
 
 export function Utilisateurs() {
   const [tab, setTab] = useState<"u" | "r">("u");
+  const me = useUser();
+  const peutVoirPermissions = me.roleCode ? ["SUPER_ADMIN", "ADMIN_NATIONAL"].includes(me.roleCode) : false;
   return (
     <div>
       <PageHead title="Utilisateurs" sub="Comptes, rôles, sites et zones d'accès." />
-      <div className="tabs"><button className={tab === "u" ? "on" : ""} onClick={() => setTab("u")}>Utilisateurs</button><button className={tab === "r" ? "on" : ""} onClick={() => setTab("r")}>Rôles et permissions</button></div>
+      <div className="tabs"><button className={tab === "u" ? "on" : ""} onClick={() => setTab("u")}>Utilisateurs</button>{peutVoirPermissions && <button className={tab === "r" ? "on" : ""} onClick={() => setTab("r")}>Rôles et permissions</button>}</div>
       {tab === "u" ? (
         <ResourcePage embedded ressource="utilisateurs" noun="utilisateur" title="Utilisateurs" titleOf={(r) => String(r.nom)}
+          filtreProvince
           columns={[{ key: "nom", label: "Nom" }, { key: "email", label: "E-mail" }, { key: "role", label: "Rôle", render: (r) => r.role?.nom ?? "—" }, { key: "site", label: "Site" },
             { key: "actif", label: "Statut", render: (r) => <Badge t={r.actif ? "ok" : "bad"}>{r.actif ? "Actif" : "Inactif"}</Badge> }]}
           fields={[
@@ -60,7 +65,15 @@ export function Utilisateurs() {
             { name: "zoneIds", label: "Zones d'accès", type: "multi",
               hint: "Rôle provincial : uniquement des provinces. Les sites et sous-zones présents et futurs sont inclus automatiquement.",
               options: (r, v) => refOpts(zonesDuRole(r.roles?.find((role: {id:string}) => role.id === v.roleId)?.code ?? "", r.geographies ?? [])) },
-            { name: "permissions", label: "Permissions individuelles (remplacent celles du rôle ; laisser vide pour hériter)", type: "multi", omitEmpty: true, options: (r) => ((r.permissions as string[]) ?? []).map((p) => ({ v: p, l: p })) },
+            ...(peutVoirPermissions ? [{
+              name: "permissions", label: "Permissions supplémentaires", type: "multi" as const,
+              hint: "Les permissions de base du rôle sont incluses; seules les permissions absentes du rôle peuvent être ajoutées.",
+              options: (r: Row, v: Row) => {
+                const role = ((r.roles as Row[]) ?? []).find((item) => String(item.id) === String(v.roleId));
+                const base = (Array.isArray(role?.permissions) ? role.permissions : []) as string[];
+                return (((r.permissions as string[]) ?? []).filter((p) => !base.includes(p))).map((p) => ({ v: p, l: p }));
+              },
+            }] : []),
             { name: "porteeNationale", label: "Portée nationale (moniteur national explicitement habilité)", type: "checkbox", adminOnly: true },
             { name: "actif", label: "Compte actif", type: "checkbox" },
           ]}
@@ -80,6 +93,8 @@ export function Utilisateurs() {
 
 export function Parametres() {
   const [tab, setTab] = useState<"p" | "t" | "f">("p");
+  const refs = useObtenirReferences();
+  const geographies = (refs.data?.geographies ?? []) as Row[];
   return (
     <div>
       <PageHead title="Paramètres" sub="Configuration générale, types de moto et tarifs." />
@@ -97,23 +112,23 @@ export function Parametres() {
       )}
       {tab === "t" && (
         <ResourcePage embedded ressource="types-moto" noun="type de moto" title="Types de moto" titleOf={(r) => String(r.nom)}
-          columns={[{ key: "nom", label: "Nom" }, { key: "roues", label: "Roues" }, { key: "tarif", label: "Tarif", render: (r) => fmtMoney(r.tarif) }, { key: "actif", label: "Actif" }]}
-          fields={[{ name: "nom", label: "Nom", required: true }, { name: "roues", label: "Nombre de roues", type: "number", required: true }, { name: "tarif", label: "Tarif de base", type: "number", required: true }, { name: "actif", label: "Actif", type: "checkbox" }]}
+          columns={[{ key: "nom", label: "Nom" }, { key: "roues", label: "Roues" }, { key: "tarif", label: "Tarif de base général", render: (r) => fmtMoney(r.tarif) }, { key: "actif", label: "Actif" }]}
+          fields={[{ name: "nom", label: "Nom", required: true }, { name: "roues", label: "Nombre de roues", type: "number", required: true }, { name: "tarif", label: "Tarif de base général", type: "number", required: true, hint: "Valeur de secours si aucun tarif actif ne correspond à la zone du site." }, { name: "actif", label: "Actif", type: "checkbox" }]}
           createPerm={["PARAMETRE_MODIFIER"]} editPerm={["PARAMETRE_MODIFIER"]} suspendPerm={["PARAMETRE_MODIFIER"]}
-          setup="Définissez les types de moto (2 roues, 3 roues...) avec leur tarif de base." />
+          setup="Les types de moto sont communs à tous les sites. Le tarif de base est général; des tarifs géographiques peuvent le remplacer." />
       )}
       {tab === "f" && (
         <ResourcePage embedded ressource="tarifs" noun="tarif" title="Tarifs" titleOf={(r) => String(r.nom)}
-          columns={[{ key: "nom", label: "Nom" }, { key: "montant", label: "Montant", render: (r) => fmtMoney(r.montant) }, { key: "debut", label: "Début" }, { key: "fin", label: "Fin" }, { key: "actif", label: "Actif" }]}
+          columns={[{ key: "nom", label: "Nom" }, { key: "typeMoto", label: "Type de moto", render: (r) => String(r.typeMoto?.nom ?? "—") }, { key: "geographieId", label: "Portée géographique", render: (r) => String(geographies.find((g) => String(g.id) === String(r.geographieId))?.nom ?? "Tous les sites") }, { key: "montant", label: "Montant", render: (r) => fmtMoney(r.montant) }, { key: "debut", label: "Début" }, { key: "fin", label: "Fin" }, { key: "actif", label: "Actif" }]}
           fields={[
             { name: "nom", label: "Nom", required: true }, { name: "montant", label: "Montant", type: "number", required: true },
             { name: "typeMotoId", label: "Type de moto", type: "select", required: true, options: (r) => refOpts(r.typesMoto) },
-            { name: "geographieId", label: "Géographie", type: "select", options: (r) => refOpts(r.geographies) },
+            { name: "geographieId", label: "Portée géographique (vide = tous les sites)", type: "select", options: (r) => refOpts(r.geographies), hint: "Sélectionnez une province ou une zone pour limiter le tarif; laissez vide pour un tarif général." },
             { name: "debut", label: "Début", type: "date" }, { name: "fin", label: "Fin", type: "date" },
             { name: "actif", label: "Actif", type: "checkbox" },
           ]}
           createPerm={["PARAMETRE_MODIFIER"]} editPerm={["PARAMETRE_MODIFIER"]} suspendPerm={["PARAMETRE_MODIFIER"]}
-          setup="Un tarif lie un type de moto à un montant, éventuellement limité à une géographie et à une période." />
+          setup="Un tarif géographique remplace le tarif général pour les sites de sa zone. Le tarif le plus précis et actif est appliqué." />
       )}
     </div>
   );

@@ -104,6 +104,24 @@ export async function lister(
         "Accès aux comptes non autorisé.",
         403,
       );
+      const filtresGeographiques = [
+        f.geographieId,
+        f.provinceId,
+        f.communeId,
+        f.districtTerritoireId,
+      ].filter((id): id is string => !!id);
+      let zonesUtilisateur = ctx.geoIds;
+      for (const geographieId of filtresGeographiques) {
+        const descendants = await db.fermetureGeographique.findMany({
+          where: { ancetreId: geographieId },
+          select: { descendantId: true },
+        });
+        const ids = descendants.map((zone) => zone.descendantId);
+        zonesUtilisateur =
+          zonesUtilisateur === null
+            ? ids
+            : zonesUtilisateur.filter((id) => ids.includes(id));
+      }
       const where: Prisma.UtilisateurWhereInput = {
         ...cle,
         ...(f.sites === null
@@ -111,7 +129,7 @@ export async function lister(
           : {
               OR: [
                 { siteId: { in: f.sites } },
-                { zones: { some: { geographieId: { in: ctx.geoIds ?? [] } } } },
+                { zones: { some: { geographieId: { in: zonesUtilisateur ?? [] } } } },
               ],
             }),
         ...(f.recherche
@@ -140,16 +158,21 @@ export async function lister(
         const u = d as Prisma.UtilisateurGetPayload<{
           select: typeof utilisateurSelection;
         }>;
+        const { permissionsPersonnalisees, ...visible } = u;
         return {
-          ...u,
+          ...visible,
           zoneIds: u.zones.map((z) => z.geographieId),
-          permissions: Array.isArray(u.permissionsPersonnalisees)
-            ? u.permissionsPersonnalisees.filter(
+          ...(national(ctx.utilisateur)
+            ? {
+                permissions: Array.isArray(permissionsPersonnalisees)
+                  ? permissionsPersonnalisees.filter(
                 (p) =>
                   typeof p === "string" &&
                   PERMISSIONS.includes(p as (typeof PERMISSIONS)[number]),
-              )
-            : null,
+                    )
+                  : null,
+              }
+            : {}),
         };
       });
       break;
@@ -162,7 +185,14 @@ export async function lister(
           ? {}
           : {
               code: {
-                notIn: ["SUPER_ADMIN", "ADMIN_NATIONAL", "MONITEUR_NATIONAL"],
+                notIn: [
+                  "SUPER_ADMIN",
+                  "ADMIN_NATIONAL",
+                  "MONITEUR_NATIONAL",
+                  ...(ctx.utilisateur.role.code === "ADMIN_PROVINCIAL"
+                    ? ["ADMIN_PROVINCIAL"]
+                    : []),
+                ],
               },
             }),
       };
@@ -179,14 +209,16 @@ export async function lister(
         const r = d as Prisma.RoleGetPayload<{
           include: { permissions: true };
         }>;
-        return {
-          ...r,
-          permissions: r.permissions
-            .map((p) => p.permissionCode)
-            .filter((p) =>
-              PERMISSIONS.includes(p as (typeof PERMISSIONS)[number]),
-            ),
-        };
+        return national(ctx.utilisateur)
+          ? {
+              ...r,
+              permissions: r.permissions
+                .map((p) => p.permissionCode)
+                .filter((p) =>
+                  PERMISSIONS.includes(p as (typeof PERMISSIONS)[number]),
+                ),
+            }
+          : { id: r.id, code: r.code, nom: r.nom };
       });
       break;
     }
@@ -236,9 +268,18 @@ export async function lister(
       autoriserTerrain(ctx, "AUTOCOLLANT_CONSULTER");
       if (f.geographieId) zoneAutorisee(ctx, f.geographieId);
       const zones = await zonesAutocollants(ctx, f.sites);
+      const provinceDescendants = f.provinceId
+        ? await db.fermetureGeographique.findMany({
+            where: { ancetreId: f.provinceId },
+            select: { descendantId: true },
+          })
+        : [];
       const where: Prisma.AutocollantWhereInput = {
         ...cle,
         ...(zones === null ? {} : { geographieId: { in: zones } }),
+        ...(f.provinceId
+          ? { geographieId: { in: provinceDescendants.map((zone) => zone.descendantId) } }
+          : {}),
         ...(f.geographieId ? { geographieId: f.geographieId } : {}),
         ...(ctx.utilisateur.role.code === "AGENT"
           ? {
@@ -257,7 +298,7 @@ export async function lister(
           where,
           ...commun,
           include: {
-            site: true,
+            site: { include: { geographie: true } },
             lot: true,
             attribution: {
               select: {
@@ -278,10 +319,32 @@ export async function lister(
         }),
         db.autocollant.count({ where }),
       );
+      const geographiesAutocollants = await db.geographie.findMany({
+        where: {
+          id: {
+            in: [
+              ...new Set(
+                elements!.map((row) =>
+                  String((row as { geographieId: string }).geographieId),
+                ),
+              ),
+            ],
+          },
+        },
+        select: { id: true, nom: true, niveau: true },
+      });
+      const zoneAutocollants = new Map(
+        geographiesAutocollants.map((zone) => [zone.id, zone]),
+      );
       elements = elements!.map((row) => {
-        const autocollant = row as { numero: string; lot?: { serie?: string } | null };
+        const autocollant = row as {
+          numero: string;
+          geographieId: string;
+          lot?: { serie?: string } | null;
+        };
         return {
           ...(row as object),
+          zoneGeographique: zoneAutocollants.get(autocollant.geographieId) ?? null,
           numeroAffiche: afficherNumeroAutocollant(
             autocollant.numero,
             autocollant.lot?.serie,
@@ -524,7 +587,14 @@ export async function references(ctx: Contexte) {
           ? {}
           : {
               code: {
-                notIn: ["SUPER_ADMIN", "ADMIN_NATIONAL", "MONITEUR_NATIONAL"],
+                notIn: [
+                  "SUPER_ADMIN",
+                  "ADMIN_NATIONAL",
+                  "MONITEUR_NATIONAL",
+                  ...(ctx.utilisateur.role.code === "ADMIN_PROVINCIAL"
+                    ? ["ADMIN_PROVINCIAL"]
+                    : []),
+                ],
               },
             },
         include: { permissions: true },
@@ -538,17 +608,46 @@ export async function references(ctx: Contexte) {
         },
       }),
     ]);
+  const cheminsGeographiques = sites.length
+    ? await db.fermetureGeographique.findMany({
+        where: { descendantId: { in: sites.map((s) => s.geographieId) } },
+        include: {
+          ancetre: {
+            select: { id: true, nom: true, niveau: true, code: true },
+          },
+        },
+        orderBy: { profondeur: "desc" },
+      })
+    : [];
+  const cheminsParSite = new Map<
+    string,
+    { id: string; nom: string; niveau: string; code: string }[]
+  >();
+  for (const chemin of cheminsGeographiques) {
+    const liste = cheminsParSite.get(chemin.descendantId) ?? [];
+    liste.push(chemin.ancetre);
+    cheminsParSite.set(chemin.descendantId, liste);
+  }
+  const sitesAvecChemin = sites.map((site) => ({
+    ...site,
+    cheminGeographique:
+      cheminsParSite.get(site.geographieId) ?? [site.geographie],
+  }));
   return {
     geographies,
-    sites,
+    sites: sitesAvecChemin,
     typesMoto,
-    roles: roles.map((r) => ({
-      ...r,
-      permissions: r.permissions
-        .map((p) => p.permissionCode)
-        .filter((p) => PERMISSIONS.includes(p as (typeof PERMISSIONS)[number])),
-    })),
-    permissions: [...PERMISSIONS],
+    roles: roles.map((r) =>
+      national(ctx.utilisateur)
+        ? {
+            ...r,
+            permissions: r.permissions
+              .map((p) => p.permissionCode)
+              .filter((p) => PERMISSIONS.includes(p as (typeof PERMISSIONS)[number])),
+          }
+        : { id: r.id, code: r.code, nom: r.nom },
+    ),
+    permissions: national(ctx.utilisateur) ? [...PERMISSIONS] : [],
     exercice: await exerciceCourant(),
     identite: Object.fromEntries(configuration.map((p) => [p.cle, p.valeur])),
   };

@@ -47,10 +47,14 @@ async function verifierAffectation(
     include: { permissions: true },
   });
   if (!national(ctx.utilisateur)) {
+    const rolesInterdits = [
+      "SUPER_ADMIN",
+      "ADMIN_NATIONAL",
+      "MONITEUR_NATIONAL",
+      ...(ctx.utilisateur.role.code === "ADMIN_PROVINCIAL" ? ["ADMIN_PROVINCIAL"] : []),
+    ];
     exiger(
-      !["SUPER_ADMIN", "ADMIN_NATIONAL", "MONITEUR_NATIONAL"].includes(
-        role.code,
-      ),
+      !rolesInterdits.includes(role.code),
       "Vous ne pouvez pas attribuer ce rôle.",
       403,
     );
@@ -99,6 +103,11 @@ async function verifierAffectation(
 }
 function permissionsAutorisees(ctx: Contexte, valeur: unknown) {
   const permissions = permissionsSaisie.parse(valeur);
+  exiger(
+    ctx.utilisateur.role.code !== "ADMIN_PROVINCIAL" || permissions.length === 0,
+    "Un administrateur provincial ne peut pas gérer les permissions individuelles.",
+    403,
+  );
   exiger(
     national(ctx.utilisateur) ||
       permissions.every((p) => ctx.permissions.includes(p)),

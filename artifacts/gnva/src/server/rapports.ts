@@ -10,10 +10,18 @@ import { gains, soldeDispromalt } from "./soldes";
 export async function tableauDeBord(
   ctx: Contexte,
   parametres: URLSearchParams,
+  options: { moniteurNationalToutPays?: boolean } = {},
 ) {
   autoriserTerrain(ctx, "RAPPORT_CONSULTER");
-  const f = await filtres(ctx, parametres, true);
-  const zones = await zonesAutocollants(ctx, f.sites);
+  // Les statistiques du tableau de bord d’un moniteur national couvrent tout
+  // le pays, sans élargir le périmètre des autres ressources de son compte.
+  const portee =
+    options.moniteurNationalToutPays &&
+    ctx.utilisateur.role.code === "MONITEUR_NATIONAL"
+      ? { ...ctx, siteIds: null, geoIds: null }
+      : ctx;
+  const f = await filtres(portee, parametres, true);
+  const zones = await zonesAutocollants(portee, f.sites);
   const site = f.sites === null ? {} : { siteId: { in: f.sites } };
   const auteur = f.auteur ? { auteurId: f.auteur } : {};
   const assujetti: Prisma.AssujettiWhereInput = {

@@ -35,4 +35,4 @@ export function QrScanner({onRead,onClose}:{onRead:(valeur:string)=>void;onClose
   },[]);
   return <div style={{margin:'12px 0'}}><video ref={video} playsInline muted aria-label="Caméra de lecture QR" style={{width:'100%',maxHeight:320,borderRadius:8,background:'#111'}}/>{erreur&&<p className="errbox" role="alert">{erreur}</p>}<button type="button" className="btn" onClick={onClose}>Fermer la caméra</button></div>;
 }
-export const valeurQr=(valeur:string)=>valeur.trim().split('/').filter(Boolean).pop()??'';
+export const valeurQr=(valeur:string)=>valeur.trim();

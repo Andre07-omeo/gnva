@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+﻿import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -330,7 +330,8 @@ async function nouvelleSession(req: NextRequest, u: Identite) {
   const resultat = NextResponse.json({ utilisateur: utilisateurPublic(u) });
   const options = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    //secure: process.env.NODE_ENV === "production",
+    secure: req.nextUrl.protocol === "https:",
     sameSite: "lax" as const,
     path: "/",
     maxAge: 12 * 3600,
@@ -436,3 +437,6 @@ export async function changerMotDePasse(ctx: Contexte) {
     message: "Mot de passe modifié. Les autres sessions ont été révoquées.",
   };
 }
+
+
+

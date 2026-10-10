@@ -11,6 +11,7 @@ import { DataView, deriveCols, type Col } from "@/components/data-view";
 import { useUser } from "@/components/shell";
 import { has, isAdmin } from "@/lib/perm";
 import { cleanPayload, invalidateData, type Res, type Row } from "@/lib/utils";
+import { normaliserTerritoire } from "@/lib/territoire";
 
 export type Opt = { v: string; l: string };
 export type FieldDef = {
@@ -25,6 +26,7 @@ export type ResourceConfig = {
   readOnly?: boolean; canEdit?: boolean; canDelete?: boolean; upsertEdit?: boolean;
   statuts?: string[]; setup?: ReactNode; extraActions?: (r: Row) => ReactNode; embedded?: boolean;
   extraParams?: Row; emptyHint?: string; preCols?: Col[]; extraCols?: Col[];
+  filtreProvince?: boolean;
   createPerm?: string[]; editPerm?: string[]; suspendPerm?: string[];
   renderForm?: (props: { row: Row | null; refs: Row; onClose: () => void }) => ReactNode;
   refetchInterval?: number; onRows?: (rows: Row[]) => void;
@@ -39,11 +41,13 @@ export function ResourcePage(c: ResourceConfig) {
   const [mode, setMode] = useMode();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState("");
+  const [provinceId, setProvinceId] = useState("");
   const [page, setPage] = useState(1);
   const limite = 25;
   const [editing, setEditing] = useState<Row | "new" | null>(null);
 
-  const params = { page, limite, ...(recherche ? { recherche } : {}), ...(statut ? { statut } : {}), ...(c.extraParams ?? {}) };
+  const params = { page, limite, ...(recherche ? { recherche } : {}), ...(statut ? { statut } : {}),
+    ...(c.filtreProvince && provinceId ? { provinceId } : {}), ...(c.extraParams ?? {}) };
   const list = useListerRessource(c.ressource, params, { query: {
     queryKey: getListerRessourceQueryKey(c.ressource, params),
     refetchInterval: c.refetchInterval ?? false,
@@ -84,6 +88,15 @@ export function ResourcePage(c: ResourceConfig) {
       )}
       {c.embedded && canCreate && <div className="tools"><Btn kind="primary" onClick={() => setEditing("new")}><Plus size={15} />Ajouter : {c.noun}</Btn></div>}
       <div className="tools">
+        {c.filtreProvince && (
+          <select className="input" aria-label="Filtrer par province" value={provinceId}
+            onChange={(e) => { setProvinceId(e.target.value); setPage(1); }}>
+            <option value="">Toutes les provinces</option>
+            {(((refs.data?.geographies ?? []) as Row[])
+              .filter((g) => normaliserTerritoire(g.niveau) === "PROVINCE"))
+              .map((g) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+          </select>
+        )}
         <div style={{ position: "relative" }}>
           <Search size={14} style={{ position: "absolute", left: 9, top: 11, color: "#677084" }} />
           <input className="input" style={{ paddingLeft: 28 }} placeholder="Rechercher" value={recherche} onChange={(e) => { setRecherche(e.target.value); setPage(1); }} />
@@ -98,8 +111,8 @@ export function ResourcePage(c: ResourceConfig) {
       </div>
       <div className="card">
         {list.isLoading ? <Skeleton /> : list.isError ? <div className="pad"><ErrorBox error={list.error} retry={() => list.refetch()} /></div> : rows.length === 0 ? (
-          <Empty title={recherche || statut ? "Aucun résultat" : `Aucun ${c.noun} enregistré`}>
-            {recherche || statut ? "Modifiez la recherche ou les filtres." : (c.setup ?? c.emptyHint ?? (!canCreate ? "Les enregistrements apparaîtront ici dès les premières opérations." : `Utilisez le bouton Nouveau pour créer le premier ${c.noun}.`))}
+          <Empty title={recherche || statut || provinceId ? "Aucun résultat" : `Aucun ${c.noun} enregistré`}>
+            {recherche || statut || provinceId ? "Modifiez la recherche ou les filtres." : (c.setup ?? c.emptyHint ?? (!canCreate ? "Les enregistrements apparaîtront ici dès les premières opérations." : `Utilisez le bouton Nouveau pour créer le premier ${c.noun}.`))}
           </Empty>
         ) : (
           <>
@@ -125,12 +138,26 @@ function FormModal({ c, row, refs, onClose }: { c: ResourceConfig; row: Row | nu
     const v = row?.[f.name];
     init[f.name] = f.type === "checkbox" ? (row ? !!v : f.name === "actif") : f.type === "multi" ? (Array.isArray(v) ? v.map(String) : []) : f.type === "date" ? String(v ?? "").slice(0, 10) : v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
   });
+  if (c.ressource === "utilisateurs" && row && Array.isArray(row.permissions)) {
+    const role = ((refs.roles as Row[] | undefined) ?? []).find((item) => String(item.id) === String(row.roleId));
+    const base = (Array.isArray(role?.permissions) ? role.permissions : []) as string[];
+    init.permissions = (row.permissions as string[]).filter((permission) => !base.includes(permission));
+  }
   const [vals, setVals] = useState<Row>(init);
   const [error, setError] = useState("");
   const done = { onSuccess: () => { toast.ok(`${c.noun} enregistré`); invalidateData(qc); onClose(); }, onError: (e: unknown) => { setError((e as { data?: { error?: string } })?.data?.error ?? "Enregistrement impossible"); } };
   const create = useCreerRessource({ mutation: done });
   const modify = useModifierRessource({ mutation: done });
   const pending = create.isPending || modify.isPending;
+  const roleSelection = c.ressource === "utilisateurs"
+    ? ((refs.roles as Row[] | undefined) ?? []).find((role) => String(role.id) === String(vals.roleId))
+    : undefined;
+  const permissionsDuRole = Array.isArray(roleSelection?.permissions)
+    ? roleSelection.permissions as string[]
+    : [];
+  const permissionsAjoutees = Array.isArray(vals.permissions)
+    ? vals.permissions as string[]
+    : [];
   const set = (k: string, v: unknown) => setVals((x) => ({
     ...x, [k]: v,
     ...(c.ressource === "utilisateurs" && k === "roleId"
@@ -152,7 +179,14 @@ function FormModal({ c, row, refs, onClose }: { c: ResourceConfig; row: Row | nu
     const payload = cleanPayload(data);
     fields.forEach(f=>{if(f.type==="multi"&&f.omitEmpty&&Array.isArray(vals[f.name])&&!vals[f.name].length)payload[f.name]=null;});
     // les cases à cocher et listes vides restent explicites
-    fields.forEach((f) => { if (f.type === "checkbox") payload[f.name] = !!vals[f.name]; if (f.type === "multi" && !(f.onlyCreate && row) && !(f.omitEmpty && !(vals[f.name] as string[]).length)) payload[f.name] = vals[f.name]; });
+    fields.forEach((f) => {
+      if (f.type === "checkbox") payload[f.name] = !!vals[f.name];
+      if (f.type === "multi" && !(f.onlyCreate && row) && !(f.omitEmpty && !(vals[f.name] as string[]).length)) {
+        payload[f.name] = c.ressource === "utilisateurs" && f.name === "permissions"
+          ? [...new Set([...permissionsDuRole, ...permissionsAjoutees])]
+          : vals[f.name];
+      }
+    });
     if (row && !c.upsertEdit) modify.mutate({ ressource: c.ressource, id: String(row.id), data: payload });
     else create.mutate({ ressource: c.ressource, data: payload });
   };
@@ -176,12 +210,22 @@ function FormModal({ c, row, refs, onClose }: { c: ResourceConfig; row: Row | nu
               ) : f.type === "checkbox" ? (
                 <label className="chk"><input id={id} type="checkbox" checked={!!vals[f.name]} onChange={(e) => set(f.name, e.target.checked)} />Activé</label>
               ) : f.type === "multi" ? (
-                <div className="chips">
-                  {opts.length === 0 && <span className="hint">Aucune option disponible.</span>}
-                  {opts.map((o) => (
-                    <label key={o.v}><input type="checkbox" checked={(vals[f.name] as string[]).includes(o.v)} onChange={(e) => set(f.name, e.target.checked ? [...vals[f.name], o.v] : (vals[f.name] as string[]).filter((x) => x !== o.v))} />{o.l}</label>
-                  ))}
-                </div>
+                <>
+                  {c.ressource === "utilisateurs" && f.name === "permissions" && (
+                    <div className="card pad" style={{ marginBottom: 10 }}>
+                      <b>Permissions incluses dans le rôle {roleSelection ? `« ${String(roleSelection.nom)} »` : ""}</b>
+                      <div className="hint" style={{ marginTop: 6 }}>
+                        {permissionsDuRole.length ? permissionsDuRole.join(" · ") : "Choisissez un rôle pour afficher ses permissions de base."}
+                      </div>
+                    </div>
+                  )}
+                  <div className="chips">
+                    {opts.length === 0 && <span className="hint">Aucune permission supplémentaire disponible.</span>}
+                    {opts.map((o) => (
+                      <label key={o.v}><input type="checkbox" checked={(vals[f.name] as string[]).includes(o.v)} onChange={(e) => set(f.name, e.target.checked ? [...vals[f.name], o.v] : (vals[f.name] as string[]).filter((x) => x !== o.v))} />{o.l}</label>
+                    ))}
+                  </div>
+                </>
               ) : f.type === "textarea" ? (
                 <textarea id={id} className="input" rows={3} value={vals[f.name]} onChange={(e) => set(f.name, e.target.value)} />
               ) : (

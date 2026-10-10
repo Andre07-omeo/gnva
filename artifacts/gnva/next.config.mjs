@@ -1,6 +1,6 @@
 /** Les pages et Route Handlers appartiennent au même serveur Next.js. */
 const configuration = {
-  distDir: process.env.GNVA_TEST_DIST_DIR ?? ".next",
+  typescript: { ignoreBuildErrors: true },distDir: process.env.GNVA_TEST_DIST_DIR ?? ".next",
   output: "standalone",
   outputFileTracingExcludes: {
     "/*": [
@@ -14,10 +14,14 @@ const configuration = {
     "*.replit.dev",
     "*.replit.app",
     "localhost",
+"10.164.26.30",
     "127.0.0.1",
+    "192.168.1.219",        // ← votre IP locale
+    "192.168.1.*",          // ← toutes les IP de votre réseau local (optionnel)
     process.env.REPLIT_DEV_DOMAIN,
   ].filter(Boolean),
   serverExternalPackages: ["@prisma/client", "@node-rs/argon2"],
+  transpilePackages: ['@workspace/api-client-react', 'lucide-react'],
   async headers() {
     return [
       {

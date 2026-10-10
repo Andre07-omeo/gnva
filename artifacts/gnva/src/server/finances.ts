@@ -57,12 +57,37 @@ async function rechercherResponsables(tx: Transaction, siteId: string) {
     }))
     .filter((u) => Number.isFinite(u.distance));
   const minimum = Math.min(...moniteurs.map((u) => u.distance));
+  const responsables = habilites
+    .filter((u) => u.role.code === "MONITEUR_PROVINCIAL")
+    .map((u) => ({
+      id: u.id,
+      nom: u.nom,
+      distance:
+        u.siteId === siteId
+          ? 0
+          : Math.min(
+              ...u.zones.flatMap((z) =>
+                ascendants
+                  .filter((g) => g.ancetreId === z.geographieId)
+                  .map((g) => g.profondeur),
+              ),
+            ),
+    }))
+    .filter((u) => Number.isFinite(u.distance));
+  const distanceResponsable = Math.min(
+    ...responsables.map((u) => u.distance),
+  );
+  const chefs = responsables.filter(
+    (u) => u.distance === distanceResponsable,
+  );
+  exiger(
+    chefs.length <= 1,
+    "Plusieurs moniteurs responsables sont affectés à ce groupe. Un seul chef de contrôle est autorisé; corrigez les affectations.",
+    409,
+  );
   return {
     moniteurs: moniteurs.filter((u) => u.distance === minimum),
-    responsables: habilites
-      .filter((u) => u.role.code === "MONITEUR_PROVINCIAL" &&
-        (u.siteId === siteId || u.zones.some(z => ascendants.some(g => g.ancetreId === z.geographieId))))
-      .map((u) => ({ id: u.id, nom: u.nom })),
+    responsables: chefs.map(({ id, nom }) => ({ id, nom })),
   };
 }
 export async function responsablesRecouvrement(ctx: Contexte, siteId: string) {

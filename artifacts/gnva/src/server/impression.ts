@@ -6,23 +6,10 @@ import { lister } from "./lecture";
 import { exiger } from "./erreurs";
 import { ticketPOS } from "./ticket-pos";
 import { afficherNumeroAutocollant } from "@/lib/numero-autocollant";
+import { trouverAutocollantParIdentifiant } from "./identite-autocollant";
+import { urlBase } from "./url-base";
 
-export function urlBase(req: NextRequest) {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  exiger(
-    process.env.NODE_ENV !== "production",
-    "APP_URL doit désigner votre URL HTTPS publique en production.",
-    503,
-  );
-  const host =
-    req.headers.get("x-forwarded-host") ??
-    req.headers.get("host") ??
-    new URL(req.url).host;
-  const proto =
-    req.headers.get("x-forwarded-proto") ??
-    new URL(req.url).protocol.replace(":", "");
-  return `${proto}://${host}`;
-}
+export { urlBase };
 export const echapper = (v: unknown) =>
   String(v ?? "")
     .replaceAll("&", "&amp;")
@@ -31,12 +18,9 @@ export const echapper = (v: unknown) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 export async function imageQR(req: NextRequest, numero: string) {
-  const qr = await db.autocollant.findFirst({
-    where: { OR: [{ numero }, { jeton: numero }] },
-    select: { jeton: true },
-  });
+  const qr = await trouverAutocollantParIdentifiant(db, numero, true);
   exiger(qr, "Autocollant introuvable.", 404);
-  const png = await QRCode.toBuffer(`${urlBase(req)}/autocollant/${qr.jeton}`, {
+  const png = await QRCode.toBuffer(qr.urlPublique ?? `${urlBase(req)}/autocollant/${qr.jeton}`, {
     width: 512,
     margin: 2,
     errorCorrectionLevel: "M",
@@ -83,7 +67,7 @@ export async function imprimer(ctx: Contexte, type: string, id: string) {
     donnee.numero = donnee.numeroAffiche ?? donnee.numero;
     titre = "Autocollant QR GNVA";
     qr = await QRCode.toDataURL(
-      `${urlBase(ctx.req)}/autocollant/${donnee.jeton}`,
+      String(donnee.urlPublique ?? `${urlBase(ctx.req)}/autocollant/${donnee.jeton}`),
       { width: 320, margin: 2 },
     );
   } else if (type === "attribution") {
@@ -100,7 +84,7 @@ export async function imprimer(ctx: Contexte, type: string, id: string) {
     );
     titre = "Reçu d’attribution";
     qr = await QRCode.toDataURL(
-      `${urlBase(ctx.req)}/autocollant/${a.autocollant.jeton}`,
+      a.autocollant.urlPublique ?? `${urlBase(ctx.req)}/autocollant/${a.autocollant.jeton}`,
       { width: 220, margin: 1 },
     );
   } else {

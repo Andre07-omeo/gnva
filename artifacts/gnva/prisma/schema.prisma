@@ -192,7 +192,7 @@ model DeclarationVol {
 }
 model LotAutocollants {
   id String @id @default(cuid()) @db.VarChar(30)
-  serie String @unique @db.VarChar(60)
+  serie String @db.VarChar(60)
   prefixe String @db.VarChar(30)
   debut Int
   fin Int
@@ -201,10 +201,12 @@ model LotAutocollants {
   createurId String @db.VarChar(30)
   autocollants Autocollant[]
   createdAt DateTime @default(now()) @db.DateTime(3)
+  @@index([serie], map: "LotAutocollants_serie_idx")
 }
 model Autocollant {
   id String @id @default(cuid()) @db.VarChar(30)
-  numero String @unique @db.VarChar(80)
+  numero String @db.VarChar(80)
+  cleIdentite Bytes @unique(map: "Autocollant_cleIdentite_key") @db.VarBinary(600)
   jeton String @unique @db.VarChar(64)
   lotId String? @db.VarChar(30)
   lot LotAutocollants? @relation(fields: [lotId], references: [id])
@@ -218,6 +220,7 @@ model Autocollant {
   createdAt DateTime @default(now()) @db.DateTime(3)
    @@index([siteId, typeAutocollant, statut], map: "Autocollant_siteId_typeStock_statut_idx")
   @@index([geographieId, statut])
+  @@index([numero], map: "Autocollant_numero_idx")
 }
 model Attribution {
   id String @id @default(cuid()) @db.VarChar(30)

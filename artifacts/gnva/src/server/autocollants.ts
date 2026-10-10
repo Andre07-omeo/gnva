@@ -12,15 +12,34 @@ import {
   auditer,
   empreinte,
 } from "./contexte";
-import { exiger } from "./erreurs";
+import { ErreurMetier, exiger } from "./erreurs";
 import { reference, normaliser } from "./saisies";
 import { afficherNumeroAutocollant } from "@/lib/numero-autocollant";
 import { exerciceCourant } from "./filtres";
 import { verifierZoneLot } from "./territoires";
+import {
+  cleIdentiteAutocollant,
+  trouverAutocollantParIdentifiant,
+} from "./identite-autocollant";
+import { urlBase } from "./url-base";
+
+function erreurCreationAutocollant(erreur: unknown): never {
+  if (
+    typeof erreur === "object" &&
+    erreur !== null &&
+    "code" in erreur &&
+    erreur.code === "P2002"
+  )
+    throw new ErreurMetier(
+      409,
+      "Un autocollant portant exactement le même numéro et la même série existe déjà.",
+    );
+  throw erreur;
+}
 
 const attributionSaisie = z.object({
   assujettiId: z.string().max(30),
-  numeroAutocollant: z.string().min(1).max(80),
+  numeroAutocollant: z.string().trim().min(1).max(500),
   numeroTimbre: z
     .string()
     .regex(
@@ -52,12 +71,21 @@ export async function attribuer(
     a.site.actif && a.moto?.typeMoto.actif,
     "Le site ou le type de moto est suspendu.",
   );
+  exiger(
+    [2, 3].includes(a.moto.typeMoto.roues),
+    "L’attribution est réservée aux motos à 2 ou 3 roues.",
+    409,
+  );
   exiger(!a.moto.vole, "Attribution interdite : moto déclarée volée.", 409);
-  const numero = normaliser(d.numeroAutocollant);
-  const qr = await tx.autocollant.findFirst({
-    where: { OR: [{ numero }, { jeton: d.numeroAutocollant }] },
-  });
-  exiger(qr, "Autocollant inconnu.", 404);
+  const qr = await trouverAutocollantParIdentifiant(
+    tx,
+    d.numeroAutocollant,
+  );
+  exiger(
+    qr,
+    "Autocollant inconnu. Saisissez numéro/série ou scannez le QR.",
+    404,
+  );
   const territoire = await tx.fermetureGeographique.findUnique({
     where: {
       ancetreId_descendantId: {
@@ -170,13 +198,16 @@ export async function attribuerAutocollant(ctx: Contexte, corps: unknown) {
   });
 }
 const generationSaisie = z.object({
-  serie: z.string().min(1).max(60),
-  prefixe: z.string().regex(/^[A-Za-z0-9_-]{1,30}$/),
+  serie: z.string().trim().min(1).max(60),
+  prefixe: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,30}$/)
+    .transform(normaliser),
   geographieId: z.string().max(30),
   siteId: z.string().min(1).max(30).optional(),
   debut: z.coerce.number().int().nonnegative(),
   fin: z.coerce.number().int().nonnegative(),
-  longueur: z.coerce.number().int().min(1).max(20),
+  longueur: z.coerce.number().int().min(1).max(20).default(4),
   typeAutocollant: z
     .enum(["AUTOCOLLANT_2R", "AUTOCOLLANT_3R"])
     .default("AUTOCOLLANT_2R"),
@@ -206,6 +237,34 @@ export async function generer(ctx: Contexte, corps: unknown) {
   return db.$transaction(
     async (tx) => {
       const site = await verifierZoneLot(tx, ctx, d.geographieId, d.siteId);
+      const baseUrl = urlBase(ctx.req);
+      const autocollants = numeros.map((numero) => {
+        const jeton = randomBytes(24).toString("hex");
+        return {
+          numero,
+          jeton,
+          urlPublique: `${baseUrl}/autocollant/${jeton}`,
+        };
+      });
+      exiger(
+        autocollants.every((autocollant) => autocollant.urlPublique.length <= 500),
+        "APP_URL est trop longue pour enregistrer les URL QR des autocollants.",
+        503,
+      );
+      const cles = numeros.map((numero) =>
+        cleIdentiteAutocollant(numero, d.serie),
+      );
+      for (let i = 0; i < cles.length; i += 500) {
+        const doublon = await tx.autocollant.findFirst({
+          where: { cleIdentite: { in: cles.slice(i, i + 500) } },
+          select: { id: true },
+        });
+        exiger(
+          !doublon,
+          "Un autocollant de cette série porte déjà exactement le même numéro.",
+          409,
+        );
+      }
       const lot = await tx.lotAutocollants.create({
         data: {
           serie: d.serie,
@@ -217,17 +276,22 @@ export async function generer(ctx: Contexte, corps: unknown) {
           createurId: ctx.utilisateur.id,
         },
       });
-      for (let i = 0; i < numeros.length; i += 500)
-        await tx.autocollant.createMany({
-          data: numeros.slice(i, i + 500).map((numero) => ({
-            numero,
-            jeton: randomBytes(24).toString("hex"),
-            lotId: lot.id,
-            siteId: site.id,
-            geographieId: d.geographieId,
-            typeAutocollant: d.typeAutocollant,
-          })),
-        });
+      for (let i = 0; i < numeros.length; i += 500) {
+        try {
+          await tx.autocollant.createMany({
+            data: autocollants.slice(i, i + 500).map((autocollant) => ({
+              ...autocollant,
+              cleIdentite: cleIdentiteAutocollant(autocollant.numero, d.serie),
+              lotId: lot.id,
+              siteId: site.id,
+              geographieId: d.geographieId,
+              typeAutocollant: d.typeAutocollant,
+            })),
+          });
+        } catch (erreur) {
+          erreurCreationAutocollant(erreur);
+        }
+      }
       await auditer(
         tx,
         ctx,
@@ -241,6 +305,10 @@ export async function generer(ctx: Contexte, corps: unknown) {
       return {
         message: "Série générée dans le périmètre territorial sélectionné.",
         nombre: numeros.length,
+        autocollants: autocollants.map(({ numero, urlPublique }) => ({
+          numero,
+          urlPublique,
+        })),
       };
     },
     {
@@ -254,7 +322,7 @@ const importSaisie = z.object({
   geographieId: z.string(),
   siteId: z.string().min(1).max(30).optional(),
   typeAutocollant: z.enum(["AUTOCOLLANT_2R", "AUTOCOLLANT_3R"]),
-  serie: z.string().min(1).max(60),
+  serie: z.string().trim().min(1).max(60),
   confirmer: z.boolean().default(false),
 });
 export async function importer(ctx: Contexte, corps: unknown) {
@@ -283,7 +351,7 @@ export async function importer(ctx: Contexte, corps: unknown) {
       /^[A-Z0-9_-]{1,80}$/.test(numero),
       `Numéro QR invalide à la ligne ${i + 2}.`,
     );
-    const publique = z.string().url().parse(url);
+    const publique = z.string().max(500).url().parse(url);
     exiger(
       new URL(publique).protocol === "https:",
       "Les URL publiques doivent utiliser HTTPS.",
@@ -295,12 +363,39 @@ export async function importer(ctx: Contexte, corps: unknown) {
     "Le CSV contient des numéros en double.",
     409,
   );
-  const existants = await db.autocollant.count({
-    where: { numero: { in: valeurs.map((v) => v.numero) } },
-  });
   exiger(
-    existants === 0,
-    "Certains numéros existent déjà. Aucun QR n’a été importé.",
+    new Set(valeurs.map((v) => v.urlPublique)).size === valeurs.length,
+    "Le CSV contient des URL QR en double.",
+    409,
+  );
+  let existant = false;
+  const cles = valeurs.map((v) => cleIdentiteAutocollant(v.numero, d.serie));
+  const urls = valeurs.map((v) => v.urlPublique);
+  for (let i = 0; i < cles.length; i += 500) {
+    if (
+      await db.autocollant.findFirst({
+        where: { cleIdentite: { in: cles.slice(i, i + 500) } },
+        select: { id: true },
+      })
+    ) {
+      existant = true;
+      break;
+    }
+  }
+  for (let i = 0; !existant && i < urls.length; i += 500) {
+    if (
+      await db.autocollant.findFirst({
+        where: { urlPublique: { in: urls.slice(i, i + 500) } },
+        select: { id: true },
+      })
+    ) {
+      existant = true;
+      break;
+    }
+  }
+  exiger(
+    !existant,
+    "Un numéro/série ou une URL QR existe déjà. Aucun autocollant n’a été importé.",
     409,
   );
   if (!d.confirmer)
@@ -313,6 +408,13 @@ export async function importer(ctx: Contexte, corps: unknown) {
   return db.$transaction(
     async (tx) => {
       const site = await verifierZoneLot(tx, ctx, d.geographieId, d.siteId);
+      for (let i = 0; i < urls.length; i += 500) {
+        const collisionUrl = await tx.autocollant.findFirst({
+          where: { urlPublique: { in: urls.slice(i, i + 500) } },
+          select: { id: true },
+        });
+        exiger(!collisionUrl, "Une URL QR a déjà été importée.", 409);
+      }
       const lot = await tx.lotAutocollants.create({
         data: {
           serie: d.serie,
@@ -324,17 +426,23 @@ export async function importer(ctx: Contexte, corps: unknown) {
           createurId: ctx.utilisateur.id,
         },
       });
-      for (let i = 0; i < valeurs.length; i += 500)
-        await tx.autocollant.createMany({
-          data: valeurs.slice(i, i + 500).map((v) => ({
-            ...v,
-            jeton: randomBytes(24).toString("hex"),
-            lotId: lot.id,
-            siteId: site.id,
-            geographieId: d.geographieId,
-            typeAutocollant: d.typeAutocollant,
-          })),
-        });
+      for (let i = 0; i < valeurs.length; i += 500) {
+        try {
+          await tx.autocollant.createMany({
+            data: valeurs.slice(i, i + 500).map((v) => ({
+              ...v,
+              cleIdentite: cleIdentiteAutocollant(v.numero, d.serie),
+              jeton: randomBytes(24).toString("hex"),
+              lotId: lot.id,
+              siteId: site.id,
+              geographieId: d.geographieId,
+              typeAutocollant: d.typeAutocollant,
+            })),
+          });
+        } catch (erreur) {
+          erreurCreationAutocollant(erreur);
+        }
+      }
       await auditer(
         tx,
         ctx,
@@ -357,8 +465,10 @@ export async function importer(ctx: Contexte, corps: unknown) {
   );
 }
 export async function publicAutocollant(jeton: string) {
-  const qr = await db.autocollant.findFirst({
-    where: { OR: [{ jeton }, { numero: jeton }] },
+  const trouve = await trouverAutocollantParIdentifiant(db, jeton, true);
+  exiger(trouve, "Autocollant introuvable.", 404);
+  const qr = await db.autocollant.findUniqueOrThrow({
+    where: { id: trouve.id },
     include: {
       lot: true,
       attribution: { include: { assujetti: { include: { moto: true } } } },
@@ -369,6 +479,7 @@ export async function publicAutocollant(jeton: string) {
     a = attr?.assujetti;
   // Liste blanche explicite : aucune adresse, finance, pièce, session ou compte.
   return {
+    autocollantId: qr.id,
     numeroAutocollant: afficherNumeroAutocollant(qr.numero, qr.lot?.serie),
     numeroQR: qr.numero,
     statut: qr.statut,

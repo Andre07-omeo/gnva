@@ -14,6 +14,7 @@ import { apiJson, cleanPayload, errMsg, invalidateData, uploadPhoto, type Row } 
 import { PIECES_IDENTITE } from "@/lib/rapport-options";
 import {QrScanner,valeurQr} from "@/components/qr-scanner";
 import { afficherNumeroAutocollant } from "@/lib/numero-autocollant";
+import { estKinshasa, normaliserTerritoire } from "@/lib/territoire";
 
 const nomComplet = (r: Row) => [r.nom, r.postnom, r.prenom].filter(Boolean).join(" ");
 const attribs = (r: Row) => (Array.isArray(r.attributions) ? (r.attributions as Row[]) : []);
@@ -44,6 +45,7 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
   const [mode, setMode] = useMode();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState("");
+  const [provinceId, setProvinceId] = useState("");
   const [siteId, setSiteId] = useState("");
   const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Row | "new" | null>(null);
@@ -56,9 +58,15 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
   const terrain = me.roleCode === "AGENT";
   const refs = useObtenirReferences();
   const sites = (refs.data?.sites ?? []) as Row[];
+  const provinces = ((refs.data?.geographies ?? []) as Row[]).filter(g => normaliserTerritoire(g.niveau) === "PROVINCE");
+  const provinceDesSites = (site: Row) => {
+    const chemin = (Array.isArray(site.cheminGeographique) ? site.cheminGeographique : []) as Row[];
+    return String(chemin.find(g => normaliserTerritoire(g.niveau) === "PROVINCE")?.id ?? "");
+  };
+  const sitesProvince = provinceId ? sites.filter(site => provinceDesSites(site) === provinceId) : sites;
   const params = terrain ? { page, limite: 25 } : { page, limite: 25,
     ...(terrainTab === "assignation" ? { statut: "ACTIF" } : statut && { statut }),
-    ...(recherche && { recherche }), ...(siteId && { siteId }) };
+    ...(recherche && { recherche }), ...(provinceId && { provinceId }), ...(siteId && { siteId }) };
   const list = useListerRessource("assujettis", params,
     { query: { queryKey: getListerRessourceQueryKey("assujettis", params), refetchInterval: terrain ? 10000 : false, refetchOnMount: "always" } });
   const rows = (list.data?.elements ?? []) as Row[];
@@ -75,7 +83,7 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
         {terrainTab !== "enregistrement" && has(me, "AUTOCOLLANT_ATTRIBUER") && !r.vole && !attribueExercice && <Btn sm kind="assign" onClick={() => setAssign(r)}><Tag size={13} />Attribuer</Btn>}
         {has(me,"RAPPORT_IMPRIMER") && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/impression/ticket/${r.id}`}><Printer size={13} />{terrain ? "Imprimer / Réimprimer le ticket" : "Ticket"}</a>}
         {!terrainTab && at?.id != null && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/impression/attribution/${at.id}`}><Printer size={13} />Attribution</a>}
-        {!terrainTab && num && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/qr/${encodeURIComponent(String(num))}`}><QrCode size={13} />QR</a>}
+        {!terrainTab && num && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/qr/${encodeURIComponent(String(at.autocollant?.id ?? ""))}`}><QrCode size={13} />QR</a>}
         {terrainTab !== "assignation" && (me.roleCode === "AGENT" ? has(me, "ASSUJETTI_CREER") : has(me, "ASSUJETTI_MODIFIER")) && attribs(r).length === 0 && <Btn sm onClick={() => setEdit(r)}><Pencil size={13} />{terrainTab ? "Reprendre l’enregistrement" : "Modifier"}</Btn>}
         {!terrainTab && has(me, "VOL_DECLARER") && !r.vole && <Btn sm kind="danger" onClick={() => setVol(r)}><AlertOctagon size={13} />Vol</Btn>}
         {!terrainTab && has(me, "ASSUJETTI_SUPPRIMER") && (!attribs(r).length || peutArchiverAttribue) && <Btn sm kind="danger" onClick={() => setDel(r)} aria-label="Supprimer"><Trash2 size={13} />Supprimer</Btn>}
@@ -93,8 +101,11 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
         {!terrain && <>
         <div style={{ position: "relative" }}><Search size={14} style={{ position: "absolute", left: 9, top: 11, color: "#677084" }} />
           <input className="input" style={{ paddingLeft: 28 }} placeholder="Nom, plaque, téléphone, référence" value={recherche} onChange={(e) => { setRecherche(e.target.value); setPage(1); }} /></div>
+        <select className="input" aria-label="Filtrer par province" value={provinceId} onChange={(e) => { setProvinceId(e.target.value); setSiteId(""); setPage(1); }}>
+          <option value="">Toutes les provinces</option>{provinces.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
+        </select>
         <select className="input" value={siteId} onChange={(e) => { setSiteId(e.target.value); setPage(1); }}>
-          <option value="">Tous les sites</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
+          <option value="">Tous les sites</option>{sitesProvince.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
         </select>
         <input className="input" placeholder="Statut" value={statut} onChange={(e) => { setStatut(e.target.value.toUpperCase()); setPage(1); }} style={{ minWidth: 110 }} />
         </>}
@@ -103,7 +114,7 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
       <div className="card">
         {list.isLoading ? <Skeleton /> : list.isError ? <div className="pad"><ErrorBox error={list.error} retry={() => list.refetch()} /></div> : rows.length === 0 ? (
           <Empty title="Aucun assujetti">
-            {recherche || statut || siteId ? "Aucun résultat pour ces filtres." : <>Avant d&apos;enregistrer un assujetti, vérifiez qu&apos;un site et un type de moto existent (menus Sites et Paramètres), puis utilisez « Nouvel assujetti ».</>}
+            {recherche || statut || siteId || provinceId ? "Aucun résultat pour ces filtres." : <>Avant d&apos;enregistrer un assujetti, vérifiez qu&apos;un site et un type de moto existent (menus Sites et Paramètres), puis utilisez « Nouvel assujetti ».</>}
           </Empty>
         ) : (
           <>
@@ -115,7 +126,7 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
           </>
         )}
       </div>
-      {edit && <AssujettiForm terrain={terrain || !!terrainTab} row={edit === "new" ? null : edit} sites={sites} typesMoto={(refs.data?.typesMoto ?? []) as Row[]} onSaved={(r) => { if (has(me, "RAPPORT_IMPRIMER") && attribs(r).length === 0) setTicket(r); }} onClose={() => setEdit(null)} />}
+      {edit && <AssujettiForm terrain={terrain || !!terrainTab} row={edit === "new" ? null : edit} refs={(refs.data ?? {}) as Row} sites={sites} typesMoto={(refs.data?.typesMoto ?? []) as Row[]} onSaved={(r) => { if (has(me, "RAPPORT_IMPRIMER") && attribs(r).length === 0) setTicket(r); }} onClose={() => setEdit(null)} />}
       {ticket && <Modal open title="Assujetti enregistré — ticket POS" onClose={() => setTicket(null)}>
         <p>Dossier <b>{String(ticket.reference)}</b> enregistré. Vous pouvez imprimer maintenant ou réimprimer depuis sa fiche tant qu’il n’est pas attribué.</p>
         <a className="btn primary" target="_blank" rel="noreferrer" href={`/api/v1/impression/ticket/${ticket.id}`}><Printer size={15} />Aperçu / Imprimer le ticket POS</a>
@@ -151,7 +162,7 @@ function AssignModal({ row, onClose }: { row: Row; onClose: () => void }) {
   return (
     <Modal open title={`Attribuer : ${nomComplet(row)}`} onClose={onClose} footer={<><Btn onClick={onClose}>Annuler</Btn><Btn kind="assign" disabled={m.isPending} onClick={go}><Tag size={14} />{m.isPending ? "Attribution..." : "Attribuer"}</Btn></>}>
       {error && <div className="errbox" style={{ marginBottom: 12 }} role="alert">{error}</div>}
-      <Field label="Numéro de l'autocollant" hint="Doit être disponible et appartenir au périmètre territorial de votre site."><input className="input mono" value={numeroAutocollant} onChange={(e) => setA(e.target.value)} /></Field>
+      <Field label="Numéro, série ou URL du QR" hint="Saisissez le numéro complet (ex. L-0002/02), collez l’URL du QR importé ou scannez le même QR. Il doit être disponible dans le périmètre territorial du dossier."><input className="input mono" placeholder="L-0002/02 ou https://…/autocollant/…" value={numeroAutocollant} onChange={(e) => setA(e.target.value)} /></Field>
       <Btn onClick={()=>setCamera(v=>!v)}><Camera size={14}/>Scanner le QR</Btn>
       {camera&&<QrScanner onRead={v=>{setA(valeurQr(v));setCamera(false);}} onClose={()=>setCamera(false)}/>}
       <Field label="Numéro de timbre"><input className="input mono" value={numeroTimbre} onChange={(e) => setT(e.target.value)} /></Field>
@@ -162,7 +173,7 @@ function AssignModal({ row, onClose }: { row: Row; onClose: () => void }) {
 
 const FIELDS = ["nom", "postnom", "prenom", "sexe", "naissance", "telephone", "adresse", "typePiece", "numeroPiece", "siteId", "typeMotoId", "plaque", "chassis", "moteur", "marque", "couleur"] as const;
 
-function AssujettiForm({ row, sites, typesMoto, onClose, onSaved, terrain }: { row: Row | null; sites: Row[]; typesMoto: Row[]; onClose: () => void; onSaved: (r: Row) => void; terrain?: boolean }) {
+function AssujettiForm({ row, refs, sites, typesMoto, onClose, onSaved, terrain }: { row: Row | null; refs: Row; sites: Row[]; typesMoto: Row[]; onClose: () => void; onSaved: (r: Row) => void; terrain?: boolean }) {
   const me = useUser();
   const qc = useQueryClient();
   const toast = useToast();
@@ -175,11 +186,60 @@ function AssujettiForm({ row, sites, typesMoto, onClose, onSaved, terrain }: { r
     return o;
   });
   const pieces = String(v.typePiece ?? "").split("|").filter(Boolean);
+  const siteSelectionne = sites.find((s) => String(s.id) === String(v.siteId));
+  const peutChoisirSite = ["SUPER_ADMIN", "ADMIN_NATIONAL"].includes(
+    String(me.roleCode),
+  );
+  const chemin = Array.isArray(siteSelectionne?.cheminGeographique)
+    ? (siteSelectionne.cheminGeographique as Row[])
+    : siteSelectionne?.geographie
+      ? [siteSelectionne.geographie as Row]
+      : [];
+  const province = chemin.find(
+    (g) => normaliserTerritoire(String(g.niveau ?? "")) === "PROVINCE",
+  );
+  const kinshasa = province
+    ? estKinshasa({ nom: String(province.nom), code: String(province.code) })
+    : false;
+  const geoNiveau = (niveau: string) =>
+    chemin.find(
+      (g) => normaliserTerritoire(String(g.niveau ?? "")) === niveau,
+    );
+  const localisation = [
+    province && { label: "Province", valeur: String(province.nom) },
+    ...(kinshasa
+      ? [
+          geoNiveau("DISTRICT") && {
+            label: "District",
+            valeur: String(geoNiveau("DISTRICT")?.nom),
+          },
+          geoNiveau("COMMUNE") && {
+            label: "Commune",
+            valeur: String(geoNiveau("COMMUNE")?.nom),
+          },
+        ]
+      : [
+          geoNiveau("VILLE") && {
+            label: "Ville",
+            valeur: String(geoNiveau("VILLE")?.nom),
+          },
+          geoNiveau("TERRITOIRE") && {
+            label: "Territoire",
+            valeur: String(geoNiveau("TERRITOIRE")?.nom),
+          },
+          geoNiveau("COMMUNE") && {
+            label: "Commune",
+            valeur: String(geoNiveau("COMMUNE")?.nom),
+          },
+        ]),
+  ].filter((item): item is { label: string; valeur: string } =>
+    Boolean(item?.valeur),
+  );
   const [error, setError] = useState("");
   const [up, setUp] = useState(false);
   const [dups, setDups] = useState<Row[] | null>(null);
   const set = (k: string, x: unknown) => {setDups(null);setV((o) => ({ ...o, [k]: x }));};
-  const done = { onSuccess: (resultat: unknown) => { toast.ok("Assujetti enregistré"); invalidateData(qc); onClose(); if (resultat && typeof resultat === "object") onSaved(resultat as Row); }, onError: (e: unknown) => setError(errMsg(e)) };
+  const done = { onSuccess: (resultat: unknown) => { toast.ok("Assujetti enregistré"); invalidateData(qc); onClose(); if (!row && resultat && typeof resultat === "object") onSaved(resultat as Row); }, onError: (e: unknown) => setError(errMsg(e)) };
   const create = useCreerRessource({ mutation: done });
   const modify = useModifierRessource({ mutation: done });
   const dupes = useRechercherDoublons({
@@ -236,34 +296,79 @@ function AssujettiForm({ row, sites, typesMoto, onClose, onSaved, terrain }: { r
       {dups && me.roleCode !== "AGENT" && <div className="card pad" style={{ marginBottom: 12, borderLeft: `4px solid ${dups.length ? "var(--orange)" : "var(--green)"}` }}>
         {dups.length === 0 ? "Aucun doublon détecté." : <><b>Alerte : {dups.length} correspondance(s) à vérifier</b>{dups.map((d, i) => <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>{d.exact ? <Badge t="warn">Exact</Badge> : null}{d.vole ? <Badge t="bad">Volé</Badge> : null}{d.similarite != null ? <Badge t="info">Similarité {String(d.similarite)}</Badge> : null}<span>{String(d.reference ?? "")} {nomComplet(d)} {d.plaque ? `- ${d.plaque}` : ""}</span></div>)}</>}
       </div>}
-      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
-        {v.photoUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img className="photo" src={v.photoUrl} alt="Photo de l'assujetti" /> : <div className="photo"><Camera size={26} /></div>}
-        <Field label="Photo *" hint={up ? "Téléversement..." : "Prise de vue directe sur mobile."}>
-          <input className="input" type="file" accept="image/*" capture="environment" onChange={(e) => onFile(e.target.files?.[0])} />
-        </Field>
-      </div>
       <div className="fgrid">
-        {txt("nom", "Nom", true)}{txt("postnom", "Postnom", true)}{txt("prenom", "Prénom")}
-        <Field label="Sexe *"><select className="input" value={v.sexe} onChange={(e) => set("sexe", e.target.value)}><option value="">Choisir...</option><option value="M">Masculin</option><option value="F">Féminin</option></select></Field>
-        <Field label="Date de naissance"><input className="input" type="date" value={v.naissance} onChange={(e) => set("naissance", e.target.value)} /></Field>
-        {txt("telephone", "Téléphone", true)}
-        <Field label="Adresse *" full><input className="input" value={v.adresse} onChange={(e) => set("adresse", e.target.value)} /></Field>
-        <Field label="Type de pièce d'identité" full><div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-          {[...PIECES_IDENTITE.map(p => ({ value: p.value as string, label: p.label as string })), ...pieces.filter(c => !PIECES_IDENTITE.some(p => p.value === c)).map(c => ({ value: c, label: `${c} (existant)` }))].map(p => (
-            <label key={p.value} className="chk"><input type="checkbox" checked={pieces.includes(p.value)} onChange={(e) => set("typePiece", (e.target.checked ? [...pieces, p.value] : pieces.filter(x => x !== p.value)).join("|"))} />{p.label}</label>))}
-        </div></Field>{txt("numeroPiece", "Numéro de pièce")}
-        <Field label="Site *"><select className="input" value={v.siteId} onChange={(e) => set("siteId", e.target.value)}><option value="">Choisir...</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}</select></Field>
-        <Field label="Type de moto *"><select className="input" value={v.typeMotoId} onChange={(e) => set("typeMotoId", e.target.value)}><option value="">Choisir...</option>{typesMoto.map((s) => <option key={s.id} value={s.id}>{s.nom}{s.roues ? ` (${s.roues} roues)` : ""}</option>)}</select></Field>
-        {txt("plaque", "Plaque")}{txt("chassis", "Châssis", false, { hint: "Au moins deux identifiants parmi plaque, châssis, moteur." })}{txt("moteur", "Moteur")}
-        {txt("marque", "Marque")}{txt("couleur", "Couleur")}
+        <section className="card pad full" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Localisation</h3>
+          <div className="fgrid">
+            <Field label="Site *">
+              {!peutChoisirSite ? (
+                <input className="input" readOnly value={String(siteSelectionne?.nom ?? "Aucun site attribué")} />
+              ) : (
+                <select className="input" value={v.siteId} onChange={(e) => set("siteId", e.target.value)}>
+                  <option value="">Choisir...</option>
+                  {sites.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                </select>
+              )}
+            </Field>
+            {localisation.map((item) => (
+              <Field key={item.label} label={item.label}>
+                <input className="input" readOnly value={item.valeur} />
+              </Field>
+            ))}
+            {!localisation.length && siteSelectionne && (
+              <Field label="Zone">
+                <input className="input" readOnly value={String((siteSelectionne.geographie as Row | undefined)?.nom ?? "—")} />
+              </Field>
+            )}
+            <Field label="Année d’exercice">
+              <input className="input" readOnly value={String(row?.exercice ?? refs.exercice ?? new Date().getFullYear())} />
+            </Field>
+          </div>
+        </section>
+        <section className="card pad full" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Photo</h3>
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            {v.photoUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img className="photo" src={v.photoUrl} alt="Photo de l'assujetti" /> : <div className="photo"><Camera size={26} /></div>}
+            <Field label="Photo *" hint={up ? "Téléversement..." : "Prise de vue directe sur mobile."}>
+              <input className="input" type="file" accept="image/*" capture="environment" onChange={(e) => onFile(e.target.files?.[0])} />
+            </Field>
+          </div>
+        </section>
+        <section className="card pad full" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Identité de l’assujetti</h3>
+          <div className="fgrid">
+            {txt("nom", "Nom", true)}{txt("postnom", "Postnom", true)}{txt("prenom", "Prénom")}
+            <Field label="Sexe *"><select className="input" value={v.sexe} onChange={(e) => set("sexe", e.target.value)}><option value="">Choisir...</option><option value="M">Masculin</option><option value="F">Féminin</option></select></Field>
+            <Field label="Date de naissance"><input className="input" type="date" value={v.naissance} onChange={(e) => set("naissance", e.target.value)} /></Field>
+            {txt("telephone", "Téléphone", true)}
+            <Field label="Adresse *" full><input className="input" value={v.adresse} onChange={(e) => set("adresse", e.target.value)} /></Field>
+            <Field label="Type de pièce d'identité" full><div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+              {[...PIECES_IDENTITE.map(p => ({ value: p.value as string, label: p.label as string })), ...pieces.filter(c => !PIECES_IDENTITE.some(p => p.value === c)).map(c => ({ value: c, label: `${c} (existant)` }))].map(p => (
+                <label key={p.value} className="chk"><input type="checkbox" checked={pieces.includes(p.value)} onChange={(e) => set("typePiece", (e.target.checked ? [...pieces, p.value] : pieces.filter(x => x !== p.value)).join("|"))} />{p.label}</label>))}
+            </div></Field>{txt("numeroPiece", "Numéro de pièce")}
+          </div>
+        </section>
+        <section className="card pad full" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Moto</h3>
+          <div className="fgrid">
+            <Field label="Type de moto *" hint="Les types sont communs à tous les sites; les tarifs sont configurés séparément par portée géographique.">
+              <select className="input" value={v.typeMotoId} onChange={(e) => set("typeMotoId", e.target.value)}><option value="">Choisir...</option>{typesMoto.map((s) => <option key={s.id} value={s.id}>{s.nom}{s.roues ? ` (${s.roues} roues)` : ""}</option>)}</select>
+            </Field>
+            {txt("plaque", "Plaque")}{txt("chassis", "Châssis", false, { hint: "Au moins deux identifiants parmi plaque, châssis, moteur." })}{txt("moteur", "Moteur")}
+            {txt("marque", "Marque")}{txt("couleur", "Couleur")}
+          </div>
+        </section>
         {!terrain && !row && has(me, "AUTOCOLLANT_ATTRIBUER") && (
-          <>
-            <Field label="Attribution" full><label className="chk"><input type="checkbox" checked={!!v.combine} onChange={(e) => set("combine", e.target.checked)} />Enregistrer et attribuer l&apos;autocollant immédiatement (une seule opération)</label></Field>
-            {v.combine && <>
-              <Field label="Numéro de l'autocollant *"><input className="input mono" value={v.numeroAutocollant} onChange={(e) => set("numeroAutocollant", e.target.value)} /></Field>
-              <Field label="Numéro de timbre *"><input className="input mono" value={v.numeroTimbre} onChange={(e) => set("numeroTimbre", e.target.value)} /></Field>
-            </>}
-          </>
+          <section className="card pad full">
+            <h3 style={{ marginTop: 0 }}>Attribution immédiate</h3>
+            <div className="fgrid">
+              <Field label="Attribution" full><label className="chk"><input type="checkbox" checked={!!v.combine} onChange={(e) => set("combine", e.target.checked)} />Enregistrer et attribuer l&apos;autocollant immédiatement (une seule opération)</label></Field>
+              {v.combine && <>
+                <Field label="Numéro, série ou URL du QR *" hint="Saisissez le numéro complet (ex. L-0002/02), collez l’URL du QR importé ou scannez le même QR."><input className="input mono" placeholder="L-0002/02 ou https://…/autocollant/…" value={v.numeroAutocollant} onChange={(e) => set("numeroAutocollant", e.target.value)} /></Field>
+                <Field label="Numéro de timbre *"><input className="input mono" value={v.numeroTimbre} onChange={(e) => set("numeroTimbre", e.target.value)} /></Field>
+              </>}
+            </div>
+          </section>
         )}
       </div>
     </Modal>
