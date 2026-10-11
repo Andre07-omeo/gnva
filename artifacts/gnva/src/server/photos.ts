@@ -1,14 +1,15 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import {
   S3Client,
+  DeleteObjectCommand,
   PutObjectCommand,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { db } from "./db";
-import { Contexte, autoriser, auditer } from "./contexte";
+import { Contexte, auditer } from "./contexte";
 import { exiger } from "./erreurs";
 
 const dossier = () =>
@@ -66,8 +67,29 @@ export async function photoExiste(url: string) {
     return false;
   }
 }
+export async function supprimerPhoto(url: string) {
+  const nom = path.basename(url);
+  if (url !== `/api/v1/photos/${nom}` || !/^[a-f0-9]{32}\.jpg$/.test(nom))
+    return false;
+  if (await distant())
+    await clientS3().send(
+      new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: `assujettis/${nom}` }),
+    );
+  else {
+    try {
+      await unlink(path.join(dossier(), nom));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return true;
+}
 export async function televerserPhoto(ctx: Contexte) {
-  autoriser(ctx, "ASSUJETTI_CREER");
+  exiger(
+    ctx.permissions.some((permission) => ["ASSUJETTI_CREER", "ASSUJETTI_MODIFIER"].includes(permission)),
+    "Votre compte ne dispose pas de la permission nécessaire.",
+    403,
+  );
   exiger(
     Number(ctx.req.headers.get("content-length") ?? 0) <= 6 * 1024 * 1024,
     "Photo trop volumineuse (maximum 5 Mo).",

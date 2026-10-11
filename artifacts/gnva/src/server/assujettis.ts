@@ -20,7 +20,7 @@ import {
 import { exerciceCourant } from "./filtres";
 import { attribuer } from "./autocollants";
 import { lister } from "./lecture";
-import { photoExiste } from "./photos";
+import { photoExiste, supprimerPhoto } from "./photos";
 
 export async function doublons(ctx: Contexte, corps: unknown) {
   autoriserTerrain(ctx);
@@ -204,17 +204,30 @@ export async function modifierAssujetti(
   const d = assujettiSaisie.parse(corps);
   siteAutorise(ctx, d.siteId);
   exiger(await photoExiste(d.photoUrl), "La photo téléversée n’existe pas.");
-  return db.$transaction(
+  const { resultat, anciennePhoto } = await db.$transaction(
     async (tx) => {
       const a = await tx.assujetti.findUniqueOrThrow({
         where: { id },
-        include: { attributions: true },
+        include: { attributions: true, moto: true },
       });
       exiger(
-        !a.attributions.length,
-        "Un dossier attribué ne peut plus être modifié par le formulaire courant.",
+        !a.attributions.length || ctx.utilisateur.role.code !== "AGENT",
+        "Un agent ne peut plus modifier un dossier attribué.",
         409,
       );
+      if (a.attributions.length)
+        exiger(
+          !!a.moto &&
+            d.siteId === a.siteId &&
+            d.typeMotoId === a.moto.typeMotoId &&
+            (d.plaque ?? null) === a.moto.plaque &&
+            (d.chassis ? normaliser(d.chassis) : null) === a.moto.chassis &&
+            (d.moteur ? normaliser(d.moteur) : null) === a.moto.moteur &&
+            (d.marque ?? null) === a.moto.marque &&
+            (d.couleur ?? null) === a.moto.couleur,
+          "Le site et les données de la moto ne peuvent pas être modifiés après attribution.",
+          409,
+        );
       exiger(
         ctx.utilisateur.role.code !== "AGENT" ||
           a.createurId === ctx.utilisateur.id,
@@ -283,10 +296,28 @@ export async function modifierAssujetti(
         avant,
         resultat,
       );
-      return aplatirAssujetti(resultat);
+      return { resultat, anciennePhoto: a.photoUrl };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+  let avertissementPhoto: string | undefined;
+  if (anciennePhoto !== resultat.photoUrl) {
+    const referencesPhoto = await db.assujetti.count({
+      where: { id: { not: id }, photoUrl: anciennePhoto },
+    });
+    if (!referencesPhoto) {
+      try {
+        await supprimerPhoto(anciennePhoto);
+      } catch {
+        avertissementPhoto =
+          "Les informations ont été enregistrées, mais l’ancienne photo n’a pas pu être supprimée du stockage.";
+      }
+    }
+  }
+  return {
+    ...aplatirAssujetti(resultat),
+    ...(avertissementPhoto ? { avertissementPhoto } : {}),
+  };
 }
 export async function archiverAssujetti(ctx: Contexte, id: string) {
   autoriser(ctx, "ASSUJETTI_SUPPRIMER");

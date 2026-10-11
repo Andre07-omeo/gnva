@@ -84,8 +84,8 @@ export function Assujettis({ terrainTab }: { terrainTab?: "enregistrement" | "as
         {has(me,"RAPPORT_IMPRIMER") && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/impression/ticket/${r.id}`}><Printer size={13} />{terrain ? "Imprimer / Réimprimer le ticket" : "Ticket"}</a>}
         {!terrainTab && at?.id != null && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/impression/attribution/${at.id}`}><Printer size={13} />Attribution</a>}
         {!terrainTab && num && <a className="btn sm" target="_blank" rel="noreferrer" href={`/api/v1/qr/${encodeURIComponent(String(at.autocollant?.id ?? ""))}`}><QrCode size={13} />QR</a>}
-        {terrainTab !== "assignation" && (me.roleCode === "AGENT" ? has(me, "ASSUJETTI_CREER") : has(me, "ASSUJETTI_MODIFIER")) && attribs(r).length === 0 && <Btn sm onClick={() => setEdit(r)}><Pencil size={13} />{terrainTab ? "Reprendre l’enregistrement" : "Modifier"}</Btn>}
         {!terrainTab && has(me, "VOL_DECLARER") && !r.vole && <Btn sm kind="danger" onClick={() => setVol(r)}><AlertOctagon size={13} />Vol</Btn>}
+        {terrainTab !== "assignation" && (me.roleCode === "AGENT" ? has(me, "ASSUJETTI_CREER") : has(me, "ASSUJETTI_MODIFIER")) && (!attribs(r).length || me.roleCode !== "AGENT") && <Btn sm onClick={() => setEdit(r)}><Pencil size={13} />{terrainTab ? "Reprendre l’enregistrement" : "Modifier"}</Btn>}
         {!terrainTab && has(me, "ASSUJETTI_SUPPRIMER") && (!attribs(r).length || peutArchiverAttribue) && <Btn sm kind="danger" onClick={() => setDel(r)} aria-label="Supprimer"><Trash2 size={13} />Supprimer</Btn>}
       </>
     );
@@ -239,7 +239,7 @@ function AssujettiForm({ row, refs, sites, typesMoto, onClose, onSaved, terrain 
   const [up, setUp] = useState(false);
   const [dups, setDups] = useState<Row[] | null>(null);
   const set = (k: string, x: unknown) => {setDups(null);setV((o) => ({ ...o, [k]: x }));};
-  const done = { onSuccess: (resultat: unknown) => { toast.ok("Assujetti enregistré"); invalidateData(qc); onClose(); if (!row && resultat && typeof resultat === "object") onSaved(resultat as Row); }, onError: (e: unknown) => setError(errMsg(e)) };
+  const done = { onSuccess: (resultat: unknown) => { const avertissement = resultat && typeof resultat === "object" ? (resultat as Row).avertissementPhoto : null; avertissement ? toast.err(String(avertissement)) : toast.ok("Assujetti enregistré"); invalidateData(qc); onClose(); if (!row && resultat && typeof resultat === "object") onSaved(resultat as Row); }, onError: (e: unknown) => setError(errMsg(e)) };
   const create = useCreerRessource({ mutation: done });
   const modify = useModifierRessource({ mutation: done });
   const dupes = useRechercherDoublons({
@@ -281,8 +281,9 @@ function AssujettiForm({ row, refs, sites, typesMoto, onClose, onSaved, terrain 
     setUp(true);
     try { set("photoUrl", await uploadPhoto(f)); } catch (e) { setError(errMsg(e)); } finally { setUp(false); }
   };
+  const verrouillesApresAttribution = ["plaque", "chassis", "moteur", "marque", "couleur"];
   const txt = (k: string, label: string, req = false, extra?: Row) => (
-    <Field label={label + (req ? " *" : "")} {...extra}><input className="input" value={v[k]} onChange={(e) => set(k, e.target.value)} /></Field>
+    <Field label={label + (req ? " *" : "")} {...extra}><input className="input" disabled={Boolean(row && attribs(row).length && verrouillesApresAttribution.includes(k))} value={v[k]} onChange={(e) => set(k, e.target.value)} /></Field>
   );
 
   return (
@@ -304,7 +305,7 @@ function AssujettiForm({ row, refs, sites, typesMoto, onClose, onSaved, terrain 
               {!peutChoisirSite ? (
                 <input className="input" readOnly value={String(siteSelectionne?.nom ?? "Aucun site attribué")} />
               ) : (
-                <select className="input" value={v.siteId} onChange={(e) => set("siteId", e.target.value)}>
+                  <select className="input" disabled={Boolean(row && attribs(row).length)} value={v.siteId} onChange={(e) => set("siteId", e.target.value)}>
                   <option value="">Choisir...</option>
                   {sites.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
                 </select>
@@ -352,7 +353,7 @@ function AssujettiForm({ row, refs, sites, typesMoto, onClose, onSaved, terrain 
           <h3 style={{ marginTop: 0 }}>Moto</h3>
           <div className="fgrid">
             <Field label="Type de moto *" hint="Les types sont communs à tous les sites; les tarifs sont configurés séparément par portée géographique.">
-              <select className="input" value={v.typeMotoId} onChange={(e) => set("typeMotoId", e.target.value)}><option value="">Choisir...</option>{typesMoto.map((s) => <option key={s.id} value={s.id}>{s.nom}{s.roues ? ` (${s.roues} roues)` : ""}</option>)}</select>
+              <select className="input" disabled={Boolean(row && attribs(row).length)} value={v.typeMotoId} onChange={(e) => set("typeMotoId", e.target.value)}><option value="">Choisir...</option>{typesMoto.map((s) => <option key={s.id} value={s.id}>{s.nom}{s.roues ? ` (${s.roues} roues)` : ""}</option>)}</select>
             </Field>
             {txt("plaque", "Plaque")}{txt("chassis", "Châssis", false, { hint: "Au moins deux identifiants parmi plaque, châssis, moteur." })}{txt("moteur", "Moteur")}
             {txt("marque", "Marque")}{txt("couleur", "Couleur")}
