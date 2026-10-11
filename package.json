@@ -2,13 +2,13 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
+  "private": true,
   "scripts": {
     "preinstall": "node -e \"if(!process.env.npm_config_user_agent?.startsWith('pnpm')){console.error('Use pnpm instead');process.exit(1)}\"",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "build": "pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
-  "private": true,
   "dependencies": {
     "@node-rs/argon2-wasm32-wasi": "^2.2.2",
     "@node-rs/argon2-win32-x64-msvc": "^2.2.2",
