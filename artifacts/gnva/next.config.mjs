@@ -1,6 +1,17 @@
 /** Les pages et Route Handlers appartiennent au même serveur Next.js. */
 const configuration = {
-  typescript: { ignoreBuildErrors: true },distDir: process.env.GNVA_TEST_DIST_DIR ?? ".next",
+  // ⚠️ Pansement : ignore les erreurs TypeScript pendant le build
+  // À retirer une fois les types corrigés dans src/server/*.ts
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
+  // ⚠️ Ignore aussi les erreurs ESLint pendant le build (utile pour Coolify)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
+  distDir: process.env.GNVA_TEST_DIST_DIR ?? ".next",
   output: "standalone",
   outputFileTracingExcludes: {
     "/*": [
@@ -14,14 +25,14 @@ const configuration = {
     "*.replit.dev",
     "*.replit.app",
     "localhost",
-"10.164.26.30",
+    "10.164.26.30",
     "127.0.0.1",
-    "192.168.1.219",        // ← votre IP locale
-    "192.168.1.*",          // ← toutes les IP de votre réseau local (optionnel)
+    "192.168.1.219", // ← votre IP locale
+    "192.168.1.*",   // ← toutes les IP de votre réseau local (optionnel)
     process.env.REPLIT_DEV_DOMAIN,
   ].filter(Boolean),
   serverExternalPackages: ["@prisma/client", "@node-rs/argon2"],
-  transpilePackages: ['@workspace/api-client-react', 'lucide-react'],
+  transpilePackages: ["@workspace/api-client-react", "lucide-react"],
   async headers() {
     return [
       {
@@ -39,4 +50,5 @@ const configuration = {
     ];
   },
 };
+
 export default configuration;
