@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/demarrer.mjs",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && next build && node scripts/copier-assets.mjs",
     "serve": "node scripts/production.mjs",
+    "start": "node .next/standalone/artifacts/gnva/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
