@@ -46,5 +46,5 @@ const configuration = {
     ];
   },
 };
-
+// Force rebuild - 2026-10-11
 export default configuration;
