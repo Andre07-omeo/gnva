@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/demarrer.mjs",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "serve": "node scripts/production.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
